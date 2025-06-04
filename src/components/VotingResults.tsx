@@ -2,16 +2,17 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Circle, Download, RotateCcw, TrendingUp } from "lucide-react";
-import { VoteData } from "@/pages/Index";
+import { CheckCircle, XCircle, Circle, Download, RotateCcw, TrendingUp, Clock } from "lucide-react";
+import { VoteData, VotingState } from "@/pages/Index";
 
 interface VotingResultsProps {
   votes: VoteData[];
   onReset: () => void;
   onExport: () => void;
+  votingState: VotingState;
 }
 
-const VotingResults = ({ votes, onReset, onExport }: VotingResultsProps) => {
+const VotingResults = ({ votes, onReset, onExport, votingState }: VotingResultsProps) => {
   // Calcular resultados con pesos
   const calculateResults = () => {
     const results = {
@@ -46,15 +47,6 @@ const VotingResults = ({ votes, onReset, onExport }: VotingResultsProps) => {
     }
   };
 
-  const getVoteColor = (type: string) => {
-    switch (type) {
-      case 'si': return 'bg-green-500';
-      case 'no': return 'bg-red-500';
-      case 'blanco': return 'bg-gray-500';
-      default: return 'bg-blue-500';
-    }
-  };
-
   const getVoteLabel = (type: string) => {
     switch (type) {
       case 'si': return 'SÍ';
@@ -64,8 +56,61 @@ const VotingResults = ({ votes, onReset, onExport }: VotingResultsProps) => {
     }
   };
 
+  const formatTime = (timestamp: number) => {
+    return new Date(timestamp).toLocaleString();
+  };
+
   return (
     <div className="space-y-6">
+      {/* Estado de la Votación */}
+      {votingState.question && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="text-blue-600" size={24} />
+              Información de la Votación
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold text-lg">{votingState.question.title}</h3>
+                {votingState.question.description && (
+                  <p className="text-gray-600">{votingState.question.description}</p>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="font-medium">Estado: </span>
+                  <span className={votingState.isActive ? "text-green-600" : "text-gray-600"}>
+                    {votingState.isActive ? "Activa" : "Finalizada"}
+                  </span>
+                </div>
+                
+                {votingState.startTime && (
+                  <div>
+                    <span className="font-medium">Inicio: </span>
+                    <span className="text-gray-600">
+                      {formatTime(votingState.startTime)}
+                    </span>
+                  </div>
+                )}
+                
+                {votingState.endTime && (
+                  <div>
+                    <span className="font-medium">Fin: </span>
+                    <span className="text-gray-600">
+                      {formatTime(votingState.endTime)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Resultados Principales */}
       <Card>
         <CardHeader className="text-center">

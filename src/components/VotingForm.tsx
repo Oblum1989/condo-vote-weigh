@@ -5,16 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle, XCircle, Circle, AlertCircle } from "lucide-react";
-import { VoteData, VoterWeights } from "@/pages/Index";
+import { VoteData, VoterWeights, VotingState } from "@/pages/Index";
 import { useToast } from "@/hooks/use-toast";
 
 interface VotingFormProps {
   onVote: (voterId: string, vote: 'si' | 'no' | 'blanco') => void;
   voterWeights: VoterWeights;
   existingVotes: VoteData[];
+  votingState: VotingState;
 }
 
-const VotingForm = ({ onVote, voterWeights, existingVotes }: VotingFormProps) => {
+const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: VotingFormProps) => {
   const [voterId, setVoterId] = useState("");
   const [selectedVote, setSelectedVote] = useState<'si' | 'no' | 'blanco' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,6 +41,15 @@ const VotingForm = ({ onVote, voterWeights, existingVotes }: VotingFormProps) =>
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!votingState.isActive) {
+      toast({
+        title: "Votación no disponible",
+        description: "La votación no está activa en este momento",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!selectedVote) {
       toast({
         title: "Error",
@@ -62,7 +72,7 @@ const VotingForm = ({ onVote, voterWeights, existingVotes }: VotingFormProps) =>
     setIsSubmitting(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simular procesamiento
+      await new Promise(resolve => setTimeout(resolve, 500));
       onVote(voterId, selectedVote);
       
       toast({
@@ -70,7 +80,6 @@ const VotingForm = ({ onVote, voterWeights, existingVotes }: VotingFormProps) =>
         description: `Voto "${selectedVote.toUpperCase()}" registrado correctamente para ID: ${voterId}`,
       });
       
-      // Limpiar formulario
       setVoterId("");
       setSelectedVote(null);
     } catch (error) {
@@ -87,13 +96,41 @@ const VotingForm = ({ onVote, voterWeights, existingVotes }: VotingFormProps) =>
   const voterWeight = voterId && voterWeights[voterId] ? voterWeights[voterId] : null;
   const validationError = voterId ? validateVoterId(voterId) : null;
 
+  if (!votingState.isActive || !votingState.question) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Votación No Disponible</CardTitle>
+        </CardHeader>
+        <CardContent className="text-center py-8">
+          <div className="flex items-center justify-center gap-2 text-gray-500 mb-4">
+            <AlertCircle size={48} />
+          </div>
+          <p className="text-lg text-gray-600 mb-4">
+            La votación no está activa en este momento.
+          </p>
+          <p className="text-sm text-gray-500">
+            Por favor, espere a que el administrador inicie la votación.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Emitir Voto</CardTitle>
-        <p className="text-gray-600">
-          Pregunta: ¿Está de acuerdo con la propuesta presentada?
-        </p>
+        <div className="space-y-2">
+          <p className="text-lg font-semibold">
+            {votingState.question.title}
+          </p>
+          {votingState.question.description && (
+            <p className="text-gray-600">
+              {votingState.question.description}
+            </p>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
