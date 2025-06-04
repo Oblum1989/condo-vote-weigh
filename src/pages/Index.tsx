@@ -41,8 +41,8 @@ export interface VotingQuestion {
 export interface VotingState {
   isActive: boolean;
   question: VotingQuestion | null;
-  startTime?: number;
-  endTime?: number;
+  startTime?: number | null;
+  endTime?: number | null;
 }
 
 const Index = () => {
@@ -130,9 +130,18 @@ const Index = () => {
     if (confirm('¿Estás seguro de que quieres resetear todos los votos?')) {
       try {
         await firebaseResetVotes();
+        // Actualizar el estado local
+        setVotes([]);
+        // Actualizar el estado de votación
+        await firebaseUpdateVotingState({
+          isActive: false,
+          question: null,
+          startTime: null,
+          endTime: null
+        });
         toast({
           title: "Éxito",
-          description: "Todos los votos han sido eliminados"
+          description: "Todos los votos han sido eliminados y la votación ha sido reiniciada"
         });
       } catch (error) {
         console.error('Error resetting votes:', error);
@@ -146,12 +155,23 @@ const Index = () => {
   };
 
   const exportVotes = () => {
-    const dataStr = JSON.stringify(votes, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    // Crear el encabezado del CSV
+    const headers = ['ID', 'Voto', 'Peso', 'Fecha y Hora'];
+    const csvContent = [
+      headers.join(','),
+      ...votes.map(vote => [
+        vote.id,
+        vote.vote.toUpperCase(),
+        vote.weight,
+        new Date(vote.timestamp).toLocaleString()
+      ].join(','))
+    ].join('\n');
+
+    const dataBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `votos_asamblea_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `votos_asamblea_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
 
@@ -287,22 +307,6 @@ const Index = () => {
             />
           )}
         </div>
-
-        {/* Footer Stats */}
-        <Card className="mt-8 max-w-md mx-auto">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg text-center">Estado Actual</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center">
-            <div className="text-3xl font-bold text-blue-600">{votes.length}</div>
-            <div className="text-gray-600">Votos registrados</div>
-            {votingState.question && (
-              <div className="mt-2 text-sm text-gray-500">
-                {votingState.question.title}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

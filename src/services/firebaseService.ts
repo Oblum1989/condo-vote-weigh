@@ -55,12 +55,31 @@ export const getVotes = async (): Promise<VoteData[]> => {
   }
 };
 
+// Función para obtener todos los votos (sin tiempo real, para reportes)
+export const getAllVotes = async (): Promise<VoteData[]> => {
+  try {
+    const querySnapshot = await getDocs(
+      query(collection(db, COLLECTIONS.VOTES), orderBy('timestamp', 'desc'))
+    );
+    return querySnapshot.docs.map(doc => ({
+      id: doc.data().id,
+      vote: doc.data().vote,
+      weight: doc.data().weight,
+      timestamp: doc.data().timestamp
+    }));
+  } catch (error) {
+    console.error('Error getting all votes:', error);
+    return [];
+  }
+};
+
+// Suscripción en tiempo real solo para los votos más recientes
 export const subscribeToVotes = (callback: (votes: VoteData[]) => void) => {
   const votesRef = collection(db, COLLECTIONS.VOTES);
-  const batchSize = 50; // Ajustar según necesidades
+  const recentVotesLimit = 50; // Mantener límite para actualizaciones en tiempo real
 
   return onSnapshot(
-    query(votesRef, orderBy('timestamp', 'desc'), limit(batchSize)),
+    query(votesRef, orderBy('timestamp', 'desc'), limit(recentVotesLimit)),
     (snapshot) => {
       const votes: VoteData[] = [];
       snapshot.forEach((doc) => {
@@ -73,6 +92,47 @@ export const subscribeToVotes = (callback: (votes: VoteData[]) => void) => {
       callback([]);
     }
   );
+};
+
+// Función para obtener votos paginados
+export const getVotesByPage = async (pageSize: number, lastTimestamp?: number): Promise<{ votes: VoteData[], hasMore: boolean }> => {
+  try {
+    let q = query(
+      collection(db, COLLECTIONS.VOTES),
+      orderBy('timestamp', 'desc'),
+      limit(pageSize + 1) // Pedimos uno más para saber si hay más páginas
+    );
+
+    if (lastTimestamp) {
+      q = query(
+        collection(db, COLLECTIONS.VOTES),
+        orderBy('timestamp', 'desc'),
+        limit(pageSize + 1),
+        where('timestamp', '<', lastTimestamp)
+      );
+    }
+
+    const querySnapshot = await getDocs(q);
+    const votes = querySnapshot.docs.slice(0, pageSize).map(doc => ({
+      id: doc.data().id,
+      vote: doc.data().vote,
+      weight: doc.data().weight,
+      timestamp: doc.data().timestamp
+    }));
+
+    const hasMore = querySnapshot.docs.length > pageSize;
+
+    return {
+      votes,
+      hasMore
+    };
+  } catch (error) {
+    console.error('Error getting votes by page:', error);
+    return {
+      votes: [],
+      hasMore: false
+    };
+  }
 };
 
 export const checkIfVoted = async (voterId: string): Promise<boolean> => {
