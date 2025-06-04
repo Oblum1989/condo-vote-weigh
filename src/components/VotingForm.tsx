@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { CheckCircle, XCircle, Circle, AlertCircle } from "lucide-react";
 import { VoteData, VoterWeights, VotingState } from "@/pages/Index";
 import { useToast } from "@/hooks/use-toast";
+import { checkIfVoted } from "@/services/firebaseService";
 
 interface VotingFormProps {
   onVote: (voterId: string, vote: 'si' | 'no' | 'blanco') => void;
@@ -19,7 +19,30 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
   const [voterId, setVoterId] = useState("");
   const [selectedVote, setSelectedVote] = useState<'si' | 'no' | 'blanco' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasVoted, setHasVoted] = useState(false);
+  const [checkingVote, setCheckingVote] = useState(false);
   const { toast } = useToast();
+
+  // Verificar si el ID ya votó en Firebase
+  useEffect(() => {
+    const checkVoteStatus = async () => {
+      if (voterId && voterId in voterWeights) {
+        setCheckingVote(true);
+        try {
+          const voted = await checkIfVoted(voterId);
+          setHasVoted(voted);
+        } catch (error) {
+          console.error('Error checking vote status:', error);
+        }
+        setCheckingVote(false);
+      } else {
+        setHasVoted(false);
+      }
+    };
+
+    const timeoutId = setTimeout(checkVoteStatus, 500);
+    return () => clearTimeout(timeoutId);
+  }, [voterId, voterWeights]);
 
   const validateVoterId = (id: string) => {
     if (!id.trim()) {
@@ -30,7 +53,6 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
       return "ID no encontrado en la base de datos";
     }
     
-    const hasVoted = existingVotes.some(vote => vote.id === id);
     if (hasVoted) {
       return "Este ID ya ha votado";
     }
@@ -72,8 +94,7 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
     setIsSubmitting(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      onVote(voterId, selectedVote);
+      await onVote(voterId, selectedVote);
       
       toast({
         title: "¡Voto registrado!",
@@ -82,6 +103,7 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
       
       setVoterId("");
       setSelectedVote(null);
+      setHasVoted(false);
     } catch (error) {
       toast({
         title: "Error",
@@ -152,7 +174,12 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
             {/* Feedback del ID */}
             {voterId && (
               <div className="flex items-center gap-2 text-sm">
-                {validationError ? (
+                {checkingVote ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-blue-600">Verificando...</span>
+                  </>
+                ) : validationError ? (
                   <>
                     <XCircle className="text-red-500" size={16} />
                     <span className="text-red-600">{validationError}</span>
@@ -216,7 +243,7 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
           <Button
             type="submit"
             className="w-full h-12 text-lg"
-            disabled={!voterId || !selectedVote || !!validationError || isSubmitting}
+            disabled={!voterId || !selectedVote || !!validationError || isSubmitting || checkingVote}
           >
             {isSubmitting ? "Registrando voto..." : "CONFIRMAR VOTO"}
           </Button>

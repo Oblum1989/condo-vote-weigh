@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,14 +11,6 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog";
 import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { 
   Lock, 
   Play, 
   Square, 
@@ -31,6 +22,11 @@ import {
 } from "lucide-react";
 import { VotingState, VotingQuestion, VoterWeights, VoteData } from "@/pages/Index";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  getQuestions, 
+  addQuestion as firebaseAddQuestion, 
+  deleteQuestion as firebaseDeleteQuestion 
+} from "@/services/firebaseService";
 
 interface AdminPanelProps {
   votingState: VotingState;
@@ -64,11 +60,24 @@ const AdminPanel = ({
   const ADMIN_PASSWORD = "admin123";
 
   useEffect(() => {
-    const savedQuestions = localStorage.getItem('votingQuestions');
-    if (savedQuestions) {
-      setQuestions(JSON.parse(savedQuestions));
+    if (isAuthenticated) {
+      loadQuestions();
     }
-  }, []);
+  }, [isAuthenticated]);
+
+  const loadQuestions = async () => {
+    try {
+      const loadedQuestions = await getQuestions();
+      setQuestions(loadedQuestions);
+    } catch (error) {
+      console.error('Error loading questions:', error);
+      toast({
+        title: "Error",
+        description: "Error al cargar preguntas",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
@@ -86,8 +95,8 @@ const AdminPanel = ({
     }
   };
 
-  const startVoting = (question: VotingQuestion) => {
-    onUpdateVotingState({
+  const startVoting = async (question: VotingQuestion) => {
+    await onUpdateVotingState({
       isActive: true,
       question,
       startTime: Date.now()
@@ -98,8 +107,8 @@ const AdminPanel = ({
     });
   };
 
-  const stopVoting = () => {
-    onUpdateVotingState({
+  const stopVoting = async () => {
+    await onUpdateVotingState({
       isActive: false,
       endTime: Date.now()
     });
@@ -109,7 +118,7 @@ const AdminPanel = ({
     });
   };
 
-  const createQuestion = () => {
+  const createQuestion = async () => {
     if (!newQuestion.title.trim()) {
       toast({
         title: "Error",
@@ -119,45 +128,60 @@ const AdminPanel = ({
       return;
     }
 
-    const question: VotingQuestion = {
-      id: Date.now().toString(),
-      title: newQuestion.title,
-      description: newQuestion.description,
-      options: ["Sí", "No", "En blanco"],
-      isActive: false
-    };
+    try {
+      const question: Omit<VotingQuestion, 'id'> = {
+        title: newQuestion.title,
+        description: newQuestion.description,
+        options: ["Sí", "No", "En blanco"],
+        isActive: false
+      };
 
-    const updatedQuestions = [...questions, question];
-    setQuestions(updatedQuestions);
-    localStorage.setItem('votingQuestions', JSON.stringify(updatedQuestions));
-    
-    setNewQuestion({ title: "", description: "" });
-    setIsCreatingQuestion(false);
-    
-    toast({
-      title: "Pregunta creada",
-      description: "La nueva pregunta ha sido guardada"
-    });
-  };
-
-  const deleteQuestion = (questionId: string) => {
-    if (confirm('¿Estás seguro de que quieres eliminar esta pregunta?')) {
-      const updatedQuestions = questions.filter(q => q.id !== questionId);
-      setQuestions(updatedQuestions);
-      localStorage.setItem('votingQuestions', JSON.stringify(updatedQuestions));
+      await firebaseAddQuestion(question);
+      await loadQuestions();
       
-      // Si es la pregunta activa, detener votación
-      if (votingState.question?.id === questionId) {
-        onUpdateVotingState({
-          isActive: false,
-          question: null
-        });
-      }
+      setNewQuestion({ title: "", description: "" });
+      setIsCreatingQuestion(false);
       
       toast({
-        title: "Pregunta eliminada",
-        description: "La pregunta ha sido eliminada correctamente"
+        title: "Pregunta creada",
+        description: "La nueva pregunta ha sido guardada"
       });
+    } catch (error) {
+      console.error('Error creating question:', error);
+      toast({
+        title: "Error",
+        description: "Error al crear pregunta",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const deleteQuestion = async (questionId: string) => {
+    if (confirm('¿Estás seguro de que quieres eliminar esta pregunta?')) {
+      try {
+        await firebaseDeleteQuestion(questionId);
+        await loadQuestions();
+        
+        // Si es la pregunta activa, detener votación
+        if (votingState.question?.id === questionId) {
+          await onUpdateVotingState({
+            isActive: false,
+            question: null
+          });
+        }
+        
+        toast({
+          title: "Pregunta eliminada",
+          description: "La pregunta ha sido eliminada correctamente"
+        });
+      } catch (error) {
+        console.error('Error deleting question:', error);
+        toast({
+          title: "Error",
+          description: "Error al eliminar pregunta",
+          variant: "destructive"
+        });
+      }
     }
   };
 

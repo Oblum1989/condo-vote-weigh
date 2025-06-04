@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import VotingForm from "@/components/VotingForm";
 import VotingResults from "@/components/VotingResults";
@@ -6,6 +5,17 @@ import AdminPanel from "@/components/AdminPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Vote, BarChart3, Users, Settings } from "lucide-react";
+import { 
+  subscribeToVotes, 
+  subscribeToVotingState, 
+  getVoterWeights,
+  getQuestions,
+  addVote as firebaseAddVote,
+  resetVotes as firebaseResetVotes,
+  updateVotingState as firebaseUpdateVotingState,
+  updateVoterWeights as firebaseUpdateVoterWeights
+} from "@/services/firebaseService";
+import { useToast } from "@/hooks/use-toast";
 
 export interface VoteData {
   id: string;
@@ -44,94 +54,90 @@ const Index = () => {
     question: null
   });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  // Cargar datos del localStorage al iniciar
+  // Cargar datos iniciales y configurar listeners
   useEffect(() => {
-    const savedVotes = localStorage.getItem('assemblyVotes');
-    const savedWeights = localStorage.getItem('voterWeights');
-    const savedVotingState = localStorage.getItem('votingState');
-    const savedQuestions = localStorage.getItem('votingQuestions');
-    
-    if (savedVotes) {
-      setVotes(JSON.parse(savedVotes));
-    }
-    
-    if (savedWeights) {
-      setVoterWeights(JSON.parse(savedWeights));
-    } else {
-      // Datos de ejemplo - reemplaza con tu base de datos real
-      const exampleWeights: VoterWeights = {
-        "001": 1.5,
-        "002": 1.0,
-        "003": 2.0,
-        "004": 1.0,
-        "005": 1.5,
-        "101": 1.2,
-        "102": 1.8,
-        "201": 1.3,
-        "202": 1.7,
-        "301": 1.1,
-      };
-      setVoterWeights(exampleWeights);
-      localStorage.setItem('voterWeights', JSON.stringify(exampleWeights));
-    }
+    const initializeData = async () => {
+      try {
+        // Cargar pesos de votantes
+        const weights = await getVoterWeights();
+        setVoterWeights(weights);
 
-    if (savedVotingState) {
-      setVotingState(JSON.parse(savedVotingState));
-    } else {
-      // Pregunta por defecto
-      const defaultQuestion: VotingQuestion = {
-        id: "1",
-        title: "¿Está de acuerdo con la propuesta presentada?",
-        description: "Votación sobre la propuesta de mejoras en las áreas comunes del conjunto residencial.",
-        options: ["Sí", "No", "En blanco"],
-        isActive: false
-      };
-      
-      if (!savedQuestions) {
-        localStorage.setItem('votingQuestions', JSON.stringify([defaultQuestion]));
+        // Configurar listener para votos en tiempo real
+        const unsubscribeVotes = subscribeToVotes((newVotes) => {
+          setVotes(newVotes);
+        });
+
+        // Configurar listener para estado de votación en tiempo real
+        const unsubscribeVotingState = subscribeToVotingState((newState) => {
+          setVotingState(newState);
+        });
+
+        setLoading(false);
+
+        // Cleanup listeners
+        return () => {
+          unsubscribeVotes();
+          unsubscribeVotingState();
+        };
+      } catch (error) {
+        console.error('Error initializing data:', error);
+        toast({
+          title: "Error",
+          description: "Error al cargar datos. Verifique su conexión.",
+          variant: "destructive"
+        });
+        setLoading(false);
       }
-      
-      const initialState: VotingState = {
-        isActive: false,
-        question: defaultQuestion
-      };
-      setVotingState(initialState);
-      localStorage.setItem('votingState', JSON.stringify(initialState));
-    }
-  }, []);
+    };
 
-  // Guardar votos y estado en localStorage cada vez que cambien
-  useEffect(() => {
-    localStorage.setItem('assemblyVotes', JSON.stringify(votes));
-  }, [votes]);
+    initializeData();
+  }, [toast]);
 
-  useEffect(() => {
-    localStorage.setItem('votingState', JSON.stringify(votingState));
-  }, [votingState]);
-
-  const addVote = (voterId: string, voteOption: 'si' | 'no' | 'blanco') => {
+  const addVote = async (voterId: string, voteOption: 'si' | 'no' | 'blanco') => {
     if (!votingState.isActive) {
       console.error('La votación no está activa');
       return;
     }
 
-    const weight = voterWeights[voterId] || 1.0;
-    const newVote: VoteData = {
-      id: voterId,
-      vote: voteOption,
-      weight,
-      timestamp: Date.now()
-    };
-    
-    setVotes(prev => [...prev, newVote]);
-    console.log('Nuevo voto registrado:', newVote);
+    try {
+      const weight = voterWeights[voterId] || 1.0;
+      const newVote = {
+        id: voterId,
+        vote: voteOption,
+        weight
+      };
+      
+      await firebaseAddVote(newVote);
+      console.log('Nuevo voto registrado:', newVote);
+    } catch (error) {
+      console.error('Error adding vote:', error);
+      toast({
+        title: "Error",
+        description: "Error al registrar el voto. Intente nuevamente.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const resetVotes = () => {
+  const resetVotes = async () => {
     if (confirm('¿Estás seguro de que quieres resetear todos los votos?')) {
-      setVotes([]);
-      localStorage.removeItem('assemblyVotes');
+      try {
+        await firebaseResetVotes();
+        toast({
+          title: "Éxito",
+          description: "Todos los votos han sido eliminados"
+        });
+      } catch (error) {
+        console.error('Error resetting votes:', error);
+        toast({
+          title: "Error",
+          description: "Error al resetear votos",
+          variant: "destructive"
+        });
+      }
     }
   };
 
@@ -145,14 +151,47 @@ const Index = () => {
     link.click();
   };
 
-  const updateVotingState = (newState: Partial<VotingState>) => {
-    setVotingState(prev => ({ ...prev, ...newState }));
+  const updateVotingState = async (newState: Partial<VotingState>) => {
+    try {
+      await firebaseUpdateVotingState(newState);
+    } catch (error) {
+      console.error('Error updating voting state:', error);
+      toast({
+        title: "Error",
+        description: "Error al actualizar estado de votación",
+        variant: "destructive"
+      });
+    }
   };
 
-  const updateVoterWeights = (newWeights: VoterWeights) => {
-    setVoterWeights(newWeights);
-    localStorage.setItem('voterWeights', JSON.stringify(newWeights));
+  const updateVoterWeights = async (newWeights: VoterWeights) => {
+    try {
+      await firebaseUpdateVoterWeights(newWeights);
+      setVoterWeights(newWeights);
+    } catch (error) {
+      console.error('Error updating voter weights:', error);
+      toast({
+        title: "Error",
+        description: "Error al actualizar pesos de votantes",
+        variant: "destructive"
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <Card className="w-full max-w-md mx-auto">
+          <CardContent className="flex items-center justify-center p-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Cargando aplicación...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -164,7 +203,7 @@ const Index = () => {
             Sistema de Votación Asamblea
           </h1>
           <p className="text-gray-600 text-lg">
-            Votación electrónica con pesos diferenciados
+            Votación electrónica con pesos diferenciados - Firebase
           </p>
           
           {/* Estado de la votación */}
