@@ -5,9 +5,9 @@ import AdminPanel from "@/components/AdminPanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Vote, BarChart3, Users, Settings } from "lucide-react";
-import { 
-  subscribeToVotes, 
-  subscribeToVotingState, 
+import {
+  subscribeToVotes,
+  subscribeToVotingState,
   getVoterWeights,
   getQuestions,
   addVote as firebaseAddVote,
@@ -55,6 +55,7 @@ const Index = () => {
   });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState<string>('Iniciando aplicación...');
   const { toast } = useToast();
 
   // Cargar datos iniciales y configurar listeners
@@ -62,15 +63,18 @@ const Index = () => {
     const initializeData = async () => {
       try {
         // Cargar pesos de votantes
+        setLoadingStep('Cargando configuración de votantes...');
         const weights = await getVoterWeights();
         setVoterWeights(weights);
 
         // Configurar listener para votos en tiempo real
+        setLoadingStep('Conectando al sistema de votación en tiempo real...');
         const unsubscribeVotes = subscribeToVotes((newVotes) => {
           setVotes(newVotes);
         });
 
         // Configurar listener para estado de votación en tiempo real
+        setLoadingStep('Sincronizando estado de votación...');
         const unsubscribeVotingState = subscribeToVotingState((newState) => {
           setVotingState(newState);
         });
@@ -109,7 +113,7 @@ const Index = () => {
         vote: voteOption,
         weight
       };
-      
+
       await firebaseAddVote(newVote);
       console.log('Nuevo voto registrado:', newVote);
     } catch (error) {
@@ -182,10 +186,13 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <Card className="w-full max-w-md mx-auto">
-          <CardContent className="flex items-center justify-center p-8">
+          <CardContent className="flex flex-col items-center justify-center p-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Cargando aplicación...</p>
+              <p className="text-gray-600 mb-2">{loadingStep}</p>
+              <div className="w-full max-w-xs bg-gray-200 rounded-full h-1.5 mt-4">
+                <div className="bg-blue-600 h-1.5 rounded-full animate-pulse"></div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -203,9 +210,9 @@ const Index = () => {
             Sistema de Votación Asamblea
           </h1>
           <p className="text-gray-600 text-lg">
-            Votación electrónica con pesos diferenciados - Firebase
+            Votación electrónica con pesos diferenciados
           </p>
-          
+
           {/* Estado de la votación */}
           <div className="mt-4">
             {votingState.isActive ? (
@@ -232,14 +239,16 @@ const Index = () => {
             <Users size={20} />
             Votación
           </Button>
-          <Button
-            onClick={() => setCurrentView('results')}
-            variant={currentView === 'results' ? 'default' : 'outline'}
-            className="flex items-center gap-2"
-          >
-            <BarChart3 size={20} />
-            Resultados
-          </Button>
+          {isAdminAuthenticated && (
+            <Button
+              onClick={() => setCurrentView('results')}
+              variant={currentView === 'results' ? 'default' : 'outline'}
+              className="flex items-center gap-2"
+            >
+              <BarChart3 size={20} />
+              Resultados
+            </Button>
+          )}
           <Button
             onClick={() => setCurrentView('admin')}
             variant={currentView === 'admin' ? 'default' : 'outline'}
@@ -253,15 +262,15 @@ const Index = () => {
         {/* Content */}
         <div className="max-w-4xl mx-auto">
           {currentView === 'voting' ? (
-            <VotingForm 
-              onVote={addVote} 
+            <VotingForm
+              onVote={addVote}
               voterWeights={voterWeights}
               existingVotes={votes}
               votingState={votingState}
             />
-          ) : currentView === 'results' ? (
-            <VotingResults 
-              votes={votes} 
+          ) : currentView === 'results' && isAdminAuthenticated ? (
+            <VotingResults
+              votes={votes}
               onReset={resetVotes}
               onExport={exportVotes}
               votingState={votingState}

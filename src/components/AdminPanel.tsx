@@ -3,29 +3,30 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from "@/components/ui/dialog";
-import { 
-  Lock, 
-  Play, 
-  Square, 
-  Plus, 
-  Settings, 
-  Trash, 
-  Check, 
-  Users 
+import {
+  Lock,
+  Play,
+  Square,
+  Plus,
+  Settings,
+  Trash,
+  Check,
+  Users,
+  Upload
 } from "lucide-react";
 import { VotingState, VotingQuestion, VoterWeights, VoteData } from "@/pages/Index";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  getQuestions, 
-  addQuestion as firebaseAddQuestion, 
-  deleteQuestion as firebaseDeleteQuestion 
+import {
+  getQuestions,
+  addQuestion as firebaseAddQuestion,
+  deleteQuestion as firebaseDeleteQuestion
 } from "@/services/firebaseService";
 
 interface AdminPanelProps {
@@ -38,8 +39,8 @@ interface AdminPanelProps {
   onAuthenticate: (authenticated: boolean) => void;
 }
 
-const AdminPanel = ({ 
-  votingState, 
+const AdminPanel = ({
+  votingState,
   onUpdateVotingState,
   voterWeights,
   onUpdateVoterWeights,
@@ -96,15 +97,32 @@ const AdminPanel = ({
   };
 
   const startVoting = async (question: VotingQuestion) => {
-    await onUpdateVotingState({
-      isActive: true,
-      question,
-      startTime: Date.now()
-    });
-    toast({
-      title: "Votación iniciada",
-      description: `La votación "${question.title}" está ahora activa`
-    });
+    try {
+      // Actualizar el estado de la pregunta
+      const updatedQuestion = {
+        ...question,
+        isActive: true
+      };
+
+      // Actualizar el estado de votación
+      await onUpdateVotingState({
+        isActive: true,
+        question: updatedQuestion,
+        startTime: Date.now()
+      });
+
+      toast({
+        title: "Votación iniciada",
+        description: `La votación "${question.title}" está ahora activa`
+      });
+    } catch (error) {
+      console.error('Error starting vote:', error);
+      toast({
+        title: "Error",
+        description: "Error al iniciar la votación",
+        variant: "destructive"
+      });
+    }
   };
 
   const stopVoting = async () => {
@@ -138,10 +156,10 @@ const AdminPanel = ({
 
       await firebaseAddQuestion(question);
       await loadQuestions();
-      
+
       setNewQuestion({ title: "", description: "" });
       setIsCreatingQuestion(false);
-      
+
       toast({
         title: "Pregunta creada",
         description: "La nueva pregunta ha sido guardada"
@@ -161,7 +179,7 @@ const AdminPanel = ({
       try {
         await firebaseDeleteQuestion(questionId);
         await loadQuestions();
-        
+
         // Si es la pregunta activa, detener votación
         if (votingState.question?.id === questionId) {
           await onUpdateVotingState({
@@ -169,7 +187,7 @@ const AdminPanel = ({
             question: null
           });
         }
-        
+
         toast({
           title: "Pregunta eliminada",
           description: "La pregunta ha sido eliminada correctamente"
@@ -182,6 +200,72 @@ const AdminPanel = ({
           variant: "destructive"
         });
       }
+    }
+  };
+
+  // Función para procesar el archivo CSV
+  const processCSVFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n');
+        const weights: VoterWeights = {};
+
+        // Saltamos la primera línea si tiene encabezados
+        const startIndex = lines[0].toLowerCase().includes('apartamento') ? 1 : 0;
+
+        for (let i = startIndex; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line) {
+            const [apartment, weight] = line.split(',');
+            const cleanApartment = apartment.trim();
+            const weightValue = parseFloat(weight.trim());
+
+            if (!isNaN(weightValue) && weightValue > 0) {
+              weights[cleanApartment] = weightValue;
+            }
+          }
+        }
+
+        if (Object.keys(weights).length > 0) {
+          await onUpdateVoterWeights(weights);
+          toast({
+            title: "Éxito",
+            description: `Se cargaron ${Object.keys(weights).length} votantes correctamente`
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "No se encontraron datos válidos en el archivo",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        console.error('Error processing CSV:', error);
+        toast({
+          title: "Error",
+          description: "Error al procesar el archivo CSV",
+          variant: "destructive"
+        });
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== "text/csv" && !file.name.endsWith('.csv')) {
+        toast({
+          title: "Error",
+          description: "Por favor, sube un archivo CSV válido",
+          variant: "destructive"
+        });
+        return;
+      }
+      processCSVFile(file);
     }
   };
 
@@ -231,7 +315,7 @@ const AdminPanel = ({
               <p className="text-gray-600">{votingState.question.description}</p>
             </div>
           )}
-          
+
           <div className="flex gap-4">
             {!votingState.isActive ? (
               <Dialog>
@@ -250,7 +334,7 @@ const AdminPanel = ({
                       <Card key={question.id} className="p-4">
                         <h4 className="font-semibold">{question.title}</h4>
                         <p className="text-sm text-gray-600 mb-3">{question.description}</p>
-                        <Button 
+                        <Button
                           onClick={() => startVoting(question)}
                           className="w-full"
                         >
@@ -262,7 +346,7 @@ const AdminPanel = ({
                 </DialogContent>
               </Dialog>
             ) : (
-              <Button 
+              <Button
                 onClick={stopVoting}
                 variant="destructive"
                 className="flex items-center gap-2"
@@ -316,8 +400,8 @@ const AdminPanel = ({
                   <Button onClick={createQuestion} className="flex-1">
                     Crear Pregunta
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => setIsCreatingQuestion(false)}
                   >
                     Cancelar
@@ -352,12 +436,76 @@ const AdminPanel = ({
                 </div>
               </Card>
             ))}
-            
+
             {questions.length === 0 && (
               <div className="text-center py-8 text-gray-500">
                 No hay preguntas creadas aún
               </div>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Gestión de Votantes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="text-indigo-600" size={24} />
+            Gestión de Votantes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-semibold mb-2">Cargar Votantes desde CSV</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              El archivo CSV debe tener dos columnas: apartamento y peso del voto.
+              <br />
+              Ejemplo: A101,1.5
+            </p>
+            <div className="flex items-center gap-4">
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const template = "apartamento,peso\nA101,1.5\nA102,2.0";
+                  const blob = new Blob([template], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'plantilla_votantes.csv';
+                  a.click();
+                }}
+              >
+                Descargar Plantilla
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="font-semibold mb-2">Votantes Registrados: {Object.keys(voterWeights).length}</h4>
+            <div className="max-h-60 overflow-y-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Apartamento</th>
+                    <th className="px-4 py-2 text-left">Peso del Voto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {Object.entries(voterWeights).map(([apartment, weight]) => (
+                    <tr key={apartment}>
+                      <td className="px-4 py-2">{apartment}</td>
+                      <td className="px-4 py-2">{weight}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -398,8 +546,8 @@ const AdminPanel = ({
 
       {/* Botón de Cerrar Sesión */}
       <div className="text-center">
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           onClick={() => onAuthenticate(false)}
           className="flex items-center gap-2"
         >

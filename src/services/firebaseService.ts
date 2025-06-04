@@ -1,16 +1,18 @@
-
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDocs, 
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
   getDoc,
-  onSnapshot, 
-  query, 
+  onSnapshot,
+  query,
   where,
-  Timestamp 
+  Timestamp,
+  orderBy,
+  limit,
+  setDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { VoteData, VoterWeights, VotingState, VotingQuestion } from '@/pages/Index';
@@ -54,15 +56,23 @@ export const getVotes = async (): Promise<VoteData[]> => {
 };
 
 export const subscribeToVotes = (callback: (votes: VoteData[]) => void) => {
-  return onSnapshot(collection(db, COLLECTIONS.VOTES), (snapshot) => {
-    const votes = snapshot.docs.map(doc => ({
-      id: doc.data().id,
-      vote: doc.data().vote,
-      weight: doc.data().weight,
-      timestamp: doc.data().timestamp
-    }));
-    callback(votes);
-  });
+  const votesRef = collection(db, COLLECTIONS.VOTES);
+  const batchSize = 50; // Ajustar según necesidades
+
+  return onSnapshot(
+    query(votesRef, orderBy('timestamp', 'desc'), limit(batchSize)),
+    (snapshot) => {
+      const votes: VoteData[] = [];
+      snapshot.forEach((doc) => {
+        votes.push({ id: doc.id, ...doc.data() } as VoteData);
+      });
+      callback(votes);
+    },
+    (error) => {
+      console.error('Error subscribing to votes:', error);
+      callback([]);
+    }
+  );
 };
 
 export const checkIfVoted = async (voterId: string): Promise<boolean> => {
@@ -88,40 +98,33 @@ export const resetVotes = async () => {
 };
 
 // Pesos de votantes
-export const getVoterWeights = async (): Promise<VoterWeights> => {
+export const getVoterWeights = async () => {
   try {
-    const docRef = doc(db, COLLECTIONS.VOTER_WEIGHTS, 'weights');
+    const docRef = doc(db, COLLECTIONS.VOTER_WEIGHTS, 'current');
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return docSnap.data() as VoterWeights;
-    } else {
-      // Datos de ejemplo si no existen
-      const exampleWeights: VoterWeights = {
-        "001": 1.5,
-        "002": 1.0,
-        "003": 2.0,
-        "004": 1.0,
-        "005": 1.5,
-        "101": 1.2,
-        "102": 1.8,
-        "201": 1.3,
-        "202": 1.7,
-        "301": 1.1,
-      };
-      await updateDoc(docRef, exampleWeights);
-      return exampleWeights;
     }
+    return {};
   } catch (error) {
-    console.error('Error getting voter weights:', error);
+    console.error('Error fetching voter weights:', error);
     return {};
   }
 };
 
 export const updateVoterWeights = async (weights: VoterWeights) => {
   try {
-    const docRef = doc(db, COLLECTIONS.VOTER_WEIGHTS, 'weights');
-    await updateDoc(docRef, weights);
+    const docRef = doc(db, COLLECTIONS.VOTER_WEIGHTS, 'current');
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      // Si el documento no existe, lo creamos
+      await setDoc(docRef, weights);
+    } else {
+      // Si existe, lo actualizamos
+      await updateDoc(docRef, weights);
+    }
   } catch (error) {
     console.error('Error updating voter weights:', error);
     throw error;
@@ -133,7 +136,7 @@ export const getVotingState = async (): Promise<VotingState> => {
   try {
     const docRef = doc(db, COLLECTIONS.VOTING_STATE, 'current');
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return docSnap.data() as VotingState;
     } else {
@@ -141,7 +144,7 @@ export const getVotingState = async (): Promise<VotingState> => {
         isActive: false,
         question: null
       };
-      await updateDoc(docRef, defaultState);
+      await setDoc(docRef, defaultState);
       return defaultState;
     }
   } catch (error) {
@@ -153,7 +156,27 @@ export const getVotingState = async (): Promise<VotingState> => {
 export const updateVotingState = async (state: Partial<VotingState>) => {
   try {
     const docRef = doc(db, COLLECTIONS.VOTING_STATE, 'current');
-    await updateDoc(docRef, state);
+    const docSnap = await getDoc(docRef);
+
+    // Limpiamos el estado eliminando campos undefined
+    const cleanState = Object.entries(state).reduce((acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Partial<VotingState>);
+
+    if (!docSnap.exists()) {
+      // Si el documento no existe, lo creamos con el estado inicial
+      await setDoc(docRef, {
+        isActive: false,
+        question: null,
+        ...cleanState
+      });
+    } else {
+      // Si existe, actualizamos solo los campos proporcionados
+      await updateDoc(docRef, cleanState);
+    }
   } catch (error) {
     console.error('Error updating voting state:', error);
     throw error;
@@ -161,12 +184,22 @@ export const updateVotingState = async (state: Partial<VotingState>) => {
 };
 
 export const subscribeToVotingState = (callback: (state: VotingState) => void) => {
-  const docRef = doc(db, COLLECTIONS.VOTING_STATE, 'current');
-  return onSnapshot(docRef, (doc) => {
-    if (doc.exists()) {
-      callback(doc.data() as VotingState);
+  const stateRef = doc(db, COLLECTIONS.VOTING_STATE, 'current');
+
+  return onSnapshot(
+    stateRef,
+    (snapshot) => {
+      const state = snapshot.data() as VotingState || {
+        isActive: false,
+        question: null
+      };
+      callback(state);
+    },
+    (error) => {
+      console.error('Error subscribing to voting state:', error);
+      callback({ isActive: false, question: null });
     }
-  });
+  );
 };
 
 // Preguntas
