@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Upload } from "lucide-react";
+import { Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   addVoter,
@@ -11,24 +11,41 @@ import {
   registerAttendance,
   checkAttendance,
   getAllAttendance,
-  updateAttendanceStatus,
   AttendanceData
 } from "@/services/firebaseService";
+import { useVotingStore } from "@/store/useVotingStore";
 
-import { AttendancePanelProps, Voters } from "@/types";
-
-const AttendancePanel = ({
-  attendance,
-  onToggleAttendance,
-  voterWeights,
-  voters,
-  onUpdateVoterWeights,
-  onAttendanceUpdate
-}: AttendancePanelProps) => {
+const AttendancePanel = () => {
   const [searchCedula, setSearchCedula] = useState("");
   const [searchResult, setSearchResult] = useState<AttendanceData | null>(null);
-  const [localVoters, setLocalVoters] = useState<Record<string, { cedula: string, apartment: string }>>(voters);
+  const [localVoters, setLocalVoters] = useState<Record<string, { cedula: string, apartment: string }>>({});
   const { toast } = useToast();
+
+  // Zustand store
+  const voterWeights = useVotingStore((state) => state.voterWeights);
+  const attendance = useVotingStore((state) => state.attendance);
+  const updateVoterWeights = useVotingStore((state) => state.updateVoterWeights);
+  const toggleAttendance = useVotingStore((state) => state.toggleAttendance);
+  const setAttendance = useVotingStore((state) => state.setAttendance);
+
+  // Cargar la lista de asistencia inicial
+  const loadAttendance = useCallback(async () => {
+    try {
+      const attendanceList = await getAllAttendance();
+      setAttendance(attendanceList);
+    } catch (error) {
+      console.error('Error loading attendance:', error);
+      toast({
+        title: "Error",
+        description: "Error al cargar la lista de asistencia",
+        variant: "destructive"
+      });
+    }
+  }, [setAttendance, toast]);
+
+  useEffect(() => {
+    loadAttendance();
+  }, [loadAttendance]);
 
   const loadVoters = useCallback(async () => {
     try {
@@ -61,10 +78,8 @@ const AttendancePanel = ({
         return;
       }
 
-      // Buscar en localVoters y voters
-      const voterFromLocal = Object.values(localVoters).find(v => v.cedula === searchCedula);
-      const voterFromProps = Object.values(voters).find(v => v.cedula === searchCedula);
-      const voter = voterFromLocal || voterFromProps;
+      // Buscar en localVoters
+      const voter = Object.values(localVoters).find(v => v.cedula === searchCedula);
 
       if (!voter) {
         toast({
@@ -85,7 +100,7 @@ const AttendancePanel = ({
 
       await registerAttendance(attendanceData);
       setSearchResult(attendanceData);
-      onAttendanceUpdate?.(); // Notificar que se registró una nueva asistencia
+      await loadAttendance();
 
       toast({
         title: "Éxito",
@@ -96,6 +111,31 @@ const AttendancePanel = ({
       toast({
         title: "Error",
         description: "Error al procesar la asistencia",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleToggleAttendance = async (record: AttendanceData) => {
+    try {
+      await toggleAttendance(record);
+      await loadAttendance();
+
+      // Si el registro actual está siendo mostrado, actualizarlo
+      if (searchResult && searchResult.cedula === record.cedula) {
+        const updatedRecord = { ...record, enabled: !record.enabled };
+        setSearchResult(updatedRecord);
+      }
+
+      toast({
+        title: "Éxito",
+        description: `Asistente ${record.enabled ? "deshabilitado" : "habilitado"} correctamente`
+      });
+    } catch (error) {
+      console.error('Error toggling attendance:', error);
+      toast({
+        title: "Error",
+        description: "Error al actualizar el estado del asistente",
         variant: "destructive"
       });
     }
@@ -129,7 +169,7 @@ const AttendancePanel = ({
         }
         if (Object.keys(newWeights).length > 0) {
           await Promise.all(voterPromises);
-          onUpdateVoterWeights(newWeights);
+          await updateVoterWeights(newWeights);
           await loadVoters(); // Recargar la lista de votantes
           toast({
             title: "Éxito",
@@ -238,7 +278,7 @@ const AttendancePanel = ({
                   <tbody className="divide-y divide-gray-200">
                     {Object.entries(voterWeights).map(([apartment, weight]) => (
                       <tr key={apartment}>
-                        <td className="px-4 py-2">{localVoters[apartment]?.cedula || voters[apartment]?.cedula || '-'}</td>
+                        <td className="px-4 py-2">{localVoters[apartment]?.cedula || '-'}</td>
                         <td className="px-4 py-2">{apartment}</td>
                         <td className="px-4 py-2">{weight}</td>
                       </tr>
@@ -298,10 +338,7 @@ const AttendancePanel = ({
                     </div>
                     <Button
                       variant={searchResult.enabled ? "destructive" : "default"}
-                      onClick={() => {
-                        onToggleAttendance(searchResult);
-                        if (onAttendanceUpdate) onAttendanceUpdate();
-                      }}
+                      onClick={() => handleToggleAttendance(searchResult)}
                     >
                       {searchResult.enabled ? "Deshabilitar" : "Habilitar"}
                     </Button>
@@ -353,10 +390,7 @@ const AttendancePanel = ({
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <Button
                             variant="ghost"
-                            onClick={() => {
-                              onToggleAttendance(record);
-                              if (onAttendanceUpdate) onAttendanceUpdate();
-                            }}
+                            onClick={() => handleToggleAttendance(record)}
                             className={record.enabled ? "text-red-600" : "text-green-600"}
                           >
                             {record.enabled ? "Deshabilitar" : "Habilitar"}

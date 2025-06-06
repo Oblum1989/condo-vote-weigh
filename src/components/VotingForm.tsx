@@ -1,21 +1,19 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, XCircle, Circle, AlertCircle } from "lucide-react";
-import { VoteData, VoterWeights, VotingState } from "@/pages/Index";
+import { CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { checkIfVoted, validateVoter, checkAttendance } from "@/services/firebaseService";
+import { useVotingStore } from "@/store/useVotingStore";
 
 interface VotingFormProps {
-  onVote: (voterId: string, apartment: string, vote: string) => Promise<void>;
-  voterWeights: VoterWeights;
-  existingVotes: VoteData[];
-  votingState: VotingState;
+  isAdmin?: boolean;
 }
 
-const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: VotingFormProps) => {
+const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
+  const { toast } = useToast();
   const [voterId, setVoterId] = useState("");
   const [apartment, setApartment] = useState("");
   const [selectedVote, setSelectedVote] = useState<string | null>(null);
@@ -27,7 +25,11 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
     apartment: { isValid: boolean; message: string | null } | null;
   }>({ voterId: null, apartment: null });
   const [isAttendanceEnabled, setIsAttendanceEnabled] = useState<boolean | null>(null);
-  const { toast } = useToast();
+
+  // Zustand store
+  const voterWeights = useVotingStore((state) => state.voterWeights);
+  const votingState = useVotingStore((state) => state.votingState);
+  const addVote = useVotingStore((state) => state.addVote);
 
   // Verificar si el ID ya votó en Firebase
   useEffect(() => {
@@ -99,23 +101,6 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
     return () => clearTimeout(timeoutId);
   }, [voterId]);
 
-  const validateVoterId = (id: string) => {
-    if (!id.trim()) {
-      return "La cédula es obligatoria";
-    }
-    return null;
-  };
-
-  const validateApartment = (apt: string) => {
-    if (!apt.trim()) {
-      return "El número de apartamento es obligatorio";
-    }
-    if (!(apt in voterWeights)) {
-      return "Apartamento no encontrado en la base de datos";
-    }
-    return null;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -146,33 +131,10 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
       return;
     }
 
-    // Validación básica
-    const voterIdError = validateVoterId(voterId);
-    if (voterIdError) {
+    if (hasVoted) {
       toast({
         title: "Error",
-        description: voterIdError,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const apartmentError = validateApartment(apartment);
-    if (apartmentError) {
-      toast({
-        title: "Error",
-        description: apartmentError,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validación contra Firebase
-    const validation = await validateVoter(voterId, apartment);
-    if (!validation.valid) {
-      toast({
-        title: "Error",
-        description: validation.error || "Error de validación",
+        description: "Esta cédula ya ha votado",
         variant: "destructive"
       });
       return;
@@ -181,7 +143,7 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
     setIsSubmitting(true);
 
     try {
-      await onVote(voterId, apartment, selectedVote);
+      await addVote(voterId, apartment, selectedVote);
 
       toast({
         title: "¡Voto registrado!",
@@ -196,7 +158,7 @@ const VotingForm = ({ onVote, voterWeights, existingVotes, votingState }: Voting
       console.error('Error submitting vote:', error);
       toast({
         title: "Error",
-        description: "Error al registrar el voto. Por favor, intente nuevamente.",
+        description: error instanceof Error ? error.message : "Error al registrar el voto. Por favor, intente nuevamente.",
         variant: "destructive"
       });
     } finally {

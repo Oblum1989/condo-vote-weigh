@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import VotingForm from "@/components/VotingForm";
 import VotingResults from "@/components/VotingResults";
 import AdminPanel from "@/components/AdminPanel";
@@ -11,45 +11,28 @@ import {
   subscribeToVotes,
   subscribeToVotingState,
   getVoterWeights,
-  addVote as firebaseAddVote,
-  resetVotes as firebaseResetVotes,
-  updateVotingState as firebaseUpdateVotingState,
-  updateVoterWeights as firebaseUpdateVoterWeights,
-  validateVoter,
   getAllAttendance,
-  updateAttendanceStatus
 } from "@/services/firebaseService";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  VoteData,
-  VoterWeights,
-  Voter,
-  Voters,
-  VotingState,
-  AttendanceData
-} from "@/types";
+import { useVotingStore } from "@/store/useVotingStore";
 
 const Index = () => {
-  const [loading, setLoading] = useState(true);
-  const [loadingStep, setLoadingStep] = useState("");
-  const [votes, setVotes] = useState<VoteData[]>([]);
-  const [voters, setVoters] = useState<Voters>({});
-  const [voterWeights, setVoterWeights] = useState<VoterWeights>({});
-  const [attendance, setAttendance] = useState<Array<{
-    cedula: string;
-    apartment: string;
-    enabled: boolean;
-    timestamp: number;
-  }>>([]);
-  const [votingState, setVotingState] = useState<VotingState>({
-    isActive: false,
-    question: null,
-    showResults: false
-  });
-  const [currentView, setCurrentView] = useState<'voting' | 'results' | 'admin_votacion' | 'attendance'>('voting');
   const { toast } = useToast();
   const { user, hasRole, logout } = useAuth();
+
+  const {
+    loading,
+    loadingStep,
+    votingState,
+    currentView,
+    setLoading,
+    setLoadingStep,
+    setVotes,
+    setVoterWeights,
+    setAttendance,
+    setVotingState,
+    setCurrentView  } = useVotingStore();
 
   // Cargar datos iniciales y configurar listeners
   useEffect(() => {
@@ -91,121 +74,7 @@ const Index = () => {
     };
 
     initializeData();
-  }, [toast]);
-
-  const addVote = async (voterId: string, apartment: string, voteOption: string) => {
-    if (!votingState.isActive) {
-      console.error('La votación no está activa');
-      return;
-    }
-
-    try {
-      // Validar el votante
-      const validation = await validateVoter(voterId, apartment);
-      if (!validation.valid) {
-        toast({
-          title: "Error de validación",
-          description: validation.error,
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const weight = voterWeights[apartment] || 1.0;
-      const newVote = {
-        id: voterId,
-        apartment,
-        vote: voteOption,
-        weight
-      };
-
-      await firebaseAddVote(newVote);
-      console.log('Nuevo voto registrado:', newVote);
-    } catch (error) {
-      console.error('Error adding vote:', error);
-      toast({
-        title: "Error",
-        description: "Error al registrar el voto. Intente nuevamente.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const resetVotes = async () => {
-    if (confirm('¿Estás seguro de que quieres resetear todos los votos?')) {
-      try {
-        await firebaseResetVotes();
-        // Actualizar el estado local
-        setVotes([]);
-        // Actualizar el estado de votación
-        await firebaseUpdateVotingState({
-          isActive: false,
-          question: null,
-          startTime: null,
-          endTime: null
-        });
-        toast({
-          title: "Éxito",
-          description: "Todos los votos han sido eliminados y la votación ha sido reiniciada"
-        });
-      } catch (error) {
-        console.error('Error resetting votes:', error);
-        toast({
-          title: "Error",
-          description: "Error al resetear votos",
-          variant: "destructive"
-        });
-      }
-    }
-  };
-
-  const exportVotes = () => {
-    // Crear el encabezado del CSV
-    const headers = ['ID', 'Voto', 'Peso', 'Fecha y Hora'];
-    const csvContent = [
-      headers.join(','),
-      ...votes.map(vote => [
-        vote.id,
-        vote.vote.toUpperCase(),
-        vote.weight,
-        new Date(vote.timestamp).toLocaleString()
-      ].join(','))
-    ].join('\n');
-
-    const dataBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `votos_asamblea_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
-  const updateVotingState = async (newState: Partial<VotingState>) => {
-    try {
-      await firebaseUpdateVotingState(newState);
-    } catch (error) {
-      console.error('Error updating voting state:', error);
-      toast({
-        title: "Error",
-        description: "Error al actualizar estado de votación",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const updateVoterWeights = async (newWeights: VoterWeights) => {
-    try {
-      await firebaseUpdateVoterWeights(newWeights);
-      setVoterWeights(newWeights);
-    } catch (error) {
-      console.error('Error updating voter weights:', error);
-      toast({
-        title: "Error",
-        description: "Error al actualizar pesos de votantes",
-        variant: "destructive"
-      });
-    }
-  };
+  }, [toast, setLoading, setLoadingStep, setVotes, setVoterWeights, setVotingState]);
 
   const loadAttendance = useCallback(async () => {
     try {
@@ -219,13 +88,18 @@ const Index = () => {
         variant: "destructive"
       });
     }
-  }, [toast]);
+  }, [toast, setAttendance]);
 
   useEffect(() => {
     if (currentView === 'attendance') {
       loadAttendance();
     }
   }, [currentView, loadAttendance]);
+
+
+
+
+
 
   if (loading) {
     return (
@@ -334,20 +208,9 @@ const Index = () => {
         {/* Content */}
         <div className="max-w-4xl mx-auto">
           {currentView === 'voting' ? (
-            <VotingForm
-              onVote={addVote}
-              voterWeights={voterWeights}
-              existingVotes={votes}
-              votingState={votingState}
-            />
+            <VotingForm />
           ) : currentView === 'results' ? (
-            <VotingResults
-              votes={votes}
-              onReset={hasRole('admin_votacion') ? resetVotes : undefined}
-              onExport={hasRole('admin_votacion') ? exportVotes : undefined}
-              votingState={votingState}
-              isAdmin={hasRole('admin_votacion')}
-            />
+            <VotingResults isAdmin={hasRole('admin_votacion')} />
           ) : currentView === 'admin_votacion' && !hasRole('admin_votacion') ? (
             <LoginForm
               role="admin_votacion"
@@ -358,35 +221,11 @@ const Index = () => {
             />
           ) : currentView === 'admin_votacion' && hasRole('admin_votacion') ? (
             <AdminPanel
-              votingState={votingState}
-              onUpdateVotingState={updateVotingState}
-              voterWeights={voterWeights}
-              onUpdateVoterWeights={updateVoterWeights}
-              votes={votes}
               isAuthenticated={true}
               onAuthenticate={() => { }} // No longer needed with AuthContext
             />
           ) : currentView === 'attendance' && hasRole('admin_votacion') ? (
-            <AttendancePanel
-              attendance={attendance}
-              voterWeights={voterWeights}
-              voters={voters}
-              onUpdateVoterWeights={updateVoterWeights}
-              onAttendanceUpdate={loadAttendance}
-              onToggleAttendance={async (record) => {
-                try {
-                  await updateAttendanceStatus(record.cedula, !record.enabled);
-                  await loadAttendance(); // Recargar la lista después de actualizar
-                } catch (error) {
-                  console.error('Error updating attendance:', error);
-                  toast({
-                    title: "Error",
-                    description: "Error al actualizar el estado de asistencia",
-                    variant: "destructive"
-                  });
-                }
-              }}
-            />
+            <AttendancePanel />
           ) : (
             <div className="text-center py-8">
               <h2 className="text-2xl font-bold mb-4">Acceso Denegado</h2>

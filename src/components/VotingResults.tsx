@@ -1,48 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Circle, Download, TrendingUp, Clock, RotateCcw, Lock } from "lucide-react";
-import { VoteData, VotingState } from "@/pages/Index";
-import { getAllVotes } from "@/services/firebaseService";
+import { Download, RotateCcw, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useVotingStore } from "@/store/useVotingStore";
+import { VoteData } from "@/types";
 
 interface VotingResultsProps {
-  votes: VoteData[];
-  onReset: () => void;
-  onExport: () => void;
-  votingState: VotingState;
   isAdmin?: boolean;
 }
 
-const VotingResults = ({
-  votes: realtimeVotes,
-  onReset,
-  onExport,
-  votingState,
-  isAdmin = false
-}: VotingResultsProps) => {
+const VotingResults = ({ isAdmin = false }: VotingResultsProps) => {
   const { toast } = useToast();
-  const [allVotes, setAllVotes] = useState<VoteData[]>([]);
   const [loading, setLoading] = useState(false);
+  const votes = useVotingStore((state) => state.votes);
+  const votingState = useVotingStore((state) => state.votingState);
+  const resetVotes = useVotingStore((state) => state.resetVotes);
 
-  // Cargar todos los votos
-  useEffect(() => {
-    loadAllVotes();
-  }, []);
-
-  const loadAllVotes = async () => {
-    setLoading(true);
-    try {
-      const votes = await getAllVotes();
-      setAllVotes(votes);
-    } catch (error) {
-      console.error('Error loading votes:', error);
-    }
-    setLoading(false);
-  };
-
-  // Calcular totales usando todos los votos disponibles
+  // Calcular totales usando los votos
   const calculateTotals = (votesToCount: VoteData[]) => {
     return votesToCount.reduce(
       (acc, vote) => {
@@ -57,33 +32,40 @@ const VotingResults = ({
     );
   };
 
-  const allVotesTotals = calculateTotals(allVotes);
+  // Manejar la exportación
+  const handleExport = () => {
+    const csvContent = votes.map(vote =>
+      `${vote.apartment},${vote.vote},${vote.weight}`
+    ).join('\n');
 
-  const getPercentage = (value: number, total: number) => {
-    if (total === 0) return 0;
-    return (value / total) * 100;
+    const blob = new Blob([`Apartamento,Voto,Peso\n${csvContent}`], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resultados-votacion-${new Date().toISOString()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
-  const getVoteIcon = (type: string) => {
-    switch (type) {
-      case 'si': return <CheckCircle className="text-green-600" size={24} />;
-      case 'no': return <XCircle className="text-red-600" size={24} />;
-      case 'blanco': return <Circle className="text-gray-600" size={24} />;
-      default: return null;
+  // Manejar el reset
+  const handleReset = async () => {
+    if (confirm('¿Está seguro de que desea resetear los votos?')) {
+      try {
+        await resetVotes();
+        toast({
+          title: "Votos resetados",
+          description: "Los votos han sido eliminados exitosamente",
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "No se pudieron resetear los votos",
+          variant: "destructive",
+        });
+      }
     }
-  };
-
-  const getVoteLabel = (type: string) => {
-    switch (type) {
-      case 'si': return 'SÍ';
-      case 'no': return 'NO';
-      case 'blanco': return 'EN BLANCO';
-      default: return '';
-    }
-  };
-
-  const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
   };
 
   if (loading) {
@@ -116,10 +98,10 @@ const VotingResults = ({
   }
 
   // Calcular resultados
-  const totalVotes = realtimeVotes.length;
-  const totalWeight = realtimeVotes.reduce((sum, vote) => sum + vote.weight, 0);
+  const totalVotes = votes.length;
+  const totalWeight = votes.reduce((sum, vote) => sum + vote.weight, 0);
 
-  const results = realtimeVotes.reduce((acc, vote) => {
+  const results = votes.reduce((acc, vote) => {
     acc[vote.vote] = {
       count: (acc[vote.vote]?.count || 0) + 1,
       weight: (acc[vote.vote]?.weight || 0) + vote.weight
@@ -201,11 +183,7 @@ const VotingResults = ({
               <Button
                 variant="destructive"
                 className="w-full flex items-center justify-center gap-2 h-12"
-                onClick={() => {
-                  if (confirm('¿Está seguro de que desea resetear los votos?')) {
-                    onReset();
-                  }
-                }}
+                onClick={handleReset}
               >
                 <RotateCcw size={20} />
                 Resetear Votos
@@ -213,7 +191,7 @@ const VotingResults = ({
               <Button
                 variant="outline"
                 className="w-full flex items-center justify-center gap-2 h-12"
-                onClick={onExport}
+                onClick={handleExport}
               >
                 <Download size={20} />
                 Exportar Resultados

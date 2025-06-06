@@ -20,36 +20,23 @@ import {
   Trash,
   Check,
   Users,
-  Upload,
   BarChart3
 } from "lucide-react";
-import { VotingState, VotingQuestion, VoterWeights, VoteData, AdminPanelProps } from "@/types";
+import type { VotingQuestion } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import {
   getQuestions,
   addQuestion as firebaseAddQuestion,
   deleteQuestion as firebaseDeleteQuestion
 } from "@/services/firebaseService";
+import { useVotingStore } from "@/store/useVotingStore";
 
 interface AdminPanelProps {
-  votingState: VotingState;
-  onUpdateVotingState: (newState: Partial<VotingState>) => void;
-  voterWeights: VoterWeights;
-  onUpdateVoterWeights: (newWeights: VoterWeights) => void;
-  votes: VoteData[];
   isAuthenticated: boolean;
   onAuthenticate: (authenticated: boolean) => void;
 }
 
-const AdminPanel = ({
-  votingState,
-  onUpdateVotingState,
-  voterWeights,
-  onUpdateVoterWeights,
-  votes,
-  isAuthenticated,
-  onAuthenticate
-}: AdminPanelProps) => {
+const AdminPanel = ({ isAuthenticated, onAuthenticate }: AdminPanelProps) => {
   const [password, setPassword] = useState("");
   const [questions, setQuestions] = useState<VotingQuestion[]>([]);
   const [newQuestion, setNewQuestion] = useState({
@@ -60,6 +47,12 @@ const AdminPanel = ({
   const [isCreatingQuestion, setIsCreatingQuestion] = useState(false);
 
   const { toast } = useToast();
+
+  // Zustand store
+  const votes = useVotingStore((state) => state.votes);
+  const voterWeights = useVotingStore((state) => state.voterWeights);
+  const votingState = useVotingStore((state) => state.votingState);
+  const updateVotingState = useVotingStore((state) => state.updateVotingState);
 
   const ADMIN_PASSWORD = "admin123";
 
@@ -77,7 +70,11 @@ const AdminPanel = ({
     }
   }, [toast]);
 
-  // Función movida a AttendancePanel
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadQuestions();
+    }
+  }, [isAuthenticated, loadQuestions]);
 
   const addOption = () => {
     setNewQuestion(prev => ({
@@ -108,12 +105,6 @@ const AdminPanel = ({
     }));
   };
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadQuestions();
-    }
-  }, [isAuthenticated, loadQuestions]);
-
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
       onAuthenticate(true);
@@ -136,7 +127,7 @@ const AdminPanel = ({
         ...question,
         isActive: true
       };
-      await onUpdateVotingState({
+      await updateVotingState({
         isActive: true,
         question: updatedQuestion,
         startTime: Date.now()
@@ -157,7 +148,7 @@ const AdminPanel = ({
   };
 
   const stopVoting = async () => {
-    await onUpdateVotingState({
+    await updateVotingState({
       isActive: false,
       endTime: Date.now()
     });
@@ -230,7 +221,7 @@ const AdminPanel = ({
         await loadQuestions();
 
         if (votingState.question?.id === questionId) {
-          await onUpdateVotingState({
+          await updateVotingState({
             isActive: false,
             question: null
           });
@@ -251,11 +242,9 @@ const AdminPanel = ({
     }
   };
 
-  // Funciones movidas a AttendancePanel
-
   const toggleResultVisibility = async () => {
     try {
-      await onUpdateVotingState({
+      await updateVotingState({
         showResults: !votingState.showResults
       });
 
@@ -544,8 +533,6 @@ const AdminPanel = ({
           </div>
         </CardContent>
       </Card>
-
-      {/* La sección de Gestión de Votantes se movió a AttendancePanel */}
     </div>
   );
 };
