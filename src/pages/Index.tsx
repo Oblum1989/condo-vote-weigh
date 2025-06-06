@@ -3,7 +3,7 @@ import VotingForm from "@/components/VotingForm";
 import VotingResults from "@/components/VotingResults";
 import AdminPanel from "@/components/adminPanel/AdminPanel";
 import LoginForm from "@/components/LoginForm";
-import AttendancePanel from "@/components/AttendancePanel";
+import AttendancePanel from "@/components/attendancePanel/AttendancePanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Vote, BarChart3, Users, Settings, LogOut } from "lucide-react";
