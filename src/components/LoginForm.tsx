@@ -58,6 +58,7 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
         </CardTitle>
       </CardHeader>
       <CardContent>
+
         <div className="mb-6 p-4 bg-blue-50 rounded-lg">
           <h3 className="font-semibold mb-2">Credenciales de Acceso:</h3>
           <p className="text-sm text-gray-600">
@@ -68,6 +69,7 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
             Nota: En un ambiente de producción, estas credenciales serían diferentes y seguras.
           </p>
         </div>
+
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -80,6 +82,7 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Ingrese su nombre de usuario"
+
                 className="pl-10"
                 disabled={isLoading}
                 required
@@ -107,6 +110,7 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
           <Button
             type="submit"
             className="w-full"
+
             disabled={isLoading}
           >
             {isLoading ? "Autenticando..." : "Iniciar Sesión"}

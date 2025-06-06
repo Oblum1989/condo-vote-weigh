@@ -6,6 +6,7 @@ import LoginForm from "@/components/LoginForm";
 import AttendancePanel from "@/components/attendancePanel/AttendancePanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+
 import { Vote, BarChart3, Users, Settings, LogOut } from "lucide-react";
 import {
   subscribeToVotes,
@@ -33,6 +34,7 @@ const Index = () => {
     setAttendance,
     setVotingState,
     setCurrentView  } = useVotingStore();
+
 
   // Cargar datos iniciales y configurar listeners
   useEffect(() => {
@@ -119,6 +121,32 @@ const Index = () => {
     );
   }
 
+  // Mostrar formulario de login si se requiere autenticación para la vista actual
+  if ((currentView === 'admin_votacion' && !hasRole('admin_votacion')) ||
+      (currentView === 'admin_asistencias' && !hasRole('admin_asistencias'))) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="space-y-4">
+          <LoginForm
+            role={currentView === 'admin_votacion' ? 'admin_votacion' : 'admin_asistencias'}
+            title={currentView === 'admin_votacion' ? 'Administrador de Votación' : 'Administrador de Asistencias'}
+            onSuccess={() => {
+              // El usuario ya está autenticado, el componente se re-renderizará
+            }}
+          />
+          <div className="text-center">
+            <Button
+              variant="outline"
+              onClick={() => setCurrentView('voting')}
+            >
+              Volver a Votación
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto py-8 px-4">
@@ -145,6 +173,7 @@ const Index = () => {
             <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-lg shadow">
               <span className="text-sm text-gray-600">
                 Sesión: Admin Votación
+
               </span>
               <Button variant="outline" size="sm" onClick={logout}>
                 <LogOut size={16} />
@@ -203,6 +232,7 @@ const Index = () => {
               </Button>
             </>
           )}
+
         </div>
 
         {/* Content */}
@@ -226,6 +256,7 @@ const Index = () => {
             />
           ) : currentView === 'attendance' && hasRole('admin_votacion') ? (
             <AttendancePanel />
+
           ) : (
             <div className="text-center py-8">
               <h2 className="text-2xl font-bold mb-4">Acceso Denegado</h2>
