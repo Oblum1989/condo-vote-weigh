@@ -15,14 +15,16 @@ import {
   setDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { VoteData, VoterWeights, VotingState, VotingQuestion } from '@/pages/Index';
+import { VoteData, VoterWeights, VotingState, VotingQuestion, VoterData, AttendanceData } from '@/types';
 
 // Colecciones
 export const COLLECTIONS = {
   VOTES: 'votes',
   VOTER_WEIGHTS: 'voterWeights',
   VOTING_STATE: 'votingState',
-  QUESTIONS: 'questions'
+  QUESTIONS: 'questions',
+  VOTERS: 'voters',
+  ATTENDANCE: 'attendance'
 };
 
 // Votos
@@ -47,7 +49,8 @@ export const getVotes = async (): Promise<VoteData[]> => {
       id: doc.data().id,
       vote: doc.data().vote,
       weight: doc.data().weight,
-      timestamp: doc.data().timestamp
+      timestamp: doc.data().timestamp,
+      apartment: doc.data().apartment
     }));
   } catch (error) {
     console.error('Error getting votes:', error);
@@ -62,10 +65,11 @@ export const getAllVotes = async (): Promise<VoteData[]> => {
       query(collection(db, COLLECTIONS.VOTES), orderBy('timestamp', 'desc'))
     );
     return querySnapshot.docs.map(doc => ({
-      id: doc.data().id,
+      id: doc.id,
       vote: doc.data().vote,
       weight: doc.data().weight,
-      timestamp: doc.data().timestamp
+      timestamp: doc.data().timestamp,
+      apartment: doc.data().apartment
     }));
   } catch (error) {
     console.error('Error getting all votes:', error);
@@ -114,10 +118,11 @@ export const getVotesByPage = async (pageSize: number, lastTimestamp?: number): 
 
     const querySnapshot = await getDocs(q);
     const votes = querySnapshot.docs.slice(0, pageSize).map(doc => ({
-      id: doc.data().id,
+      id: doc.id,
       vote: doc.data().vote,
       weight: doc.data().weight,
-      timestamp: doc.data().timestamp
+      timestamp: doc.data().timestamp,
+      apartment: doc.data().apartment
     }));
 
     const hasMore = querySnapshot.docs.length > pageSize;
@@ -191,6 +196,21 @@ export const updateVoterWeights = async (weights: VoterWeights) => {
   }
 };
 
+// Get all voters
+export const getAllVoters = async (): Promise<VoterData[]> => {
+  try {
+    const querySnapshot = await getDocs(collection(db, COLLECTIONS.VOTERS));
+    return querySnapshot.docs.map(doc => ({
+      cedula: doc.data().cedula,
+      apartment: doc.data().apartment,
+      attendanceApartment: doc.data().attendanceApartment
+    }));
+  } catch (error) {
+    console.error('Error getting voters:', error);
+    return [];
+  }
+};
+
 // Estado de votación
 export const getVotingState = async (): Promise<VotingState> => {
   try {
@@ -202,18 +222,25 @@ export const getVotingState = async (): Promise<VotingState> => {
     } else {
       const defaultState: VotingState = {
         isActive: false,
-        question: null
+        question: null,
+        showResults: false
       };
       await setDoc(docRef, defaultState);
       return defaultState;
     }
   } catch (error) {
     console.error('Error getting voting state:', error);
-    return { isActive: false, question: null };
+    return { isActive: false, question: null, showResults: false };
   }
 };
 
-export const updateVotingState = async (state: Partial<VotingState>) => {
+// Extender el estado de votación para incluir visibilidad de resultados
+export interface ExtendedVotingState extends VotingState {
+  showResults: boolean;
+}
+
+// Modificar la función de actualización del estado para incluir visibilidad
+export const updateVotingState = async (state: Partial<ExtendedVotingState>) => {
   try {
     const docRef = doc(db, COLLECTIONS.VOTING_STATE, 'current');
     const docSnap = await getDoc(docRef);
@@ -224,13 +251,14 @@ export const updateVotingState = async (state: Partial<VotingState>) => {
         acc[key] = value;
       }
       return acc;
-    }, {} as Partial<VotingState>);
+    }, {} as Partial<ExtendedVotingState>);
 
     if (!docSnap.exists()) {
       // Si el documento no existe, lo creamos con el estado inicial
       await setDoc(docRef, {
         isActive: false,
         question: null,
+        showResults: false,
         ...cleanState
       });
     } else {
@@ -251,13 +279,14 @@ export const subscribeToVotingState = (callback: (state: VotingState) => void) =
     (snapshot) => {
       const state = snapshot.data() as VotingState || {
         isActive: false,
-        question: null
+        question: null,
+        showResults: false
       };
       callback(state);
     },
     (error) => {
       console.error('Error subscribing to voting state:', error);
-      callback({ isActive: false, question: null });
+      callback({ isActive: false, question: null, showResults: false });
     }
   );
 };
@@ -291,6 +320,111 @@ export const deleteQuestion = async (questionId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.QUESTIONS, questionId));
   } catch (error) {
     console.error('Error deleting question:', error);
+    throw error;
+  }
+};
+
+// Funciones para gestión de votantes
+export const addVoter = async (voterData: VoterData) => {
+  try {
+    await setDoc(doc(db, COLLECTIONS.VOTERS, voterData.cedula), voterData);
+  } catch (error) {
+    console.error('Error adding voter:', error);
+    throw error;
+  }
+};
+
+export const getVoter = async (cedula: string): Promise<VoterData | null> => {
+  try {
+    const docRef = doc(db, COLLECTIONS.VOTERS, cedula);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docSnap.data() as VoterData : null;
+  } catch (error) {
+    console.error('Error getting voter:', error);
+    return null;
+  }
+};
+
+export const validateVoter = async (cedula: string, apartment: string): Promise<{ valid: boolean; error?: string }> => {
+  try {
+    const voterData = await getVoter(cedula);
+
+    if (!voterData) {
+      return { valid: false, error: 'Cédula no registrada en el sistema' };
+    }
+
+    // Verificar si el apartamento coincide con el registrado
+    if (voterData.apartment !== apartment) {
+      return { valid: false, error: 'El apartamento no coincide con el registrado para esta cédula' };
+    }
+
+    // Si hay un apartamento registrado en asistencia, verificar que coincida
+    if (voterData.attendanceApartment && voterData.attendanceApartment !== apartment) {
+      return {
+        valid: false,
+        error: 'Debe votar con el apartamento registrado en la asistencia'
+      };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    console.error('Error validating voter:', error);
+    return { valid: false, error: 'Error al validar votante' };
+  }
+};
+
+// Asistencia
+export interface AttendanceData {
+  cedula: string;
+  apartment: string;
+  timestamp: number;
+  enabled: boolean;
+}
+
+export const registerAttendance = async (data: Omit<AttendanceData, 'timestamp'>) => {
+  try {
+    const attendanceData = {
+      ...data,
+      timestamp: Timestamp.now().toMillis(),
+      enabled: true
+    };
+    await setDoc(doc(db, COLLECTIONS.ATTENDANCE, data.cedula), attendanceData);
+  } catch (error) {
+    console.error('Error registering attendance:', error);
+    throw error;
+  }
+};
+
+export const checkAttendance = async (cedula: string): Promise<AttendanceData | null> => {
+  try {
+    const docRef = doc(db, COLLECTIONS.ATTENDANCE, cedula);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as AttendanceData;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error checking attendance:', error);
+    throw error;
+  }
+};
+
+export const getAllAttendance = async (): Promise<AttendanceData[]> => {
+  try {
+    const querySnapshot = await getDocs(collection(db, COLLECTIONS.ATTENDANCE));
+    return querySnapshot.docs.map(doc => doc.data() as AttendanceData);
+  } catch (error) {
+    console.error('Error getting attendance:', error);
+    throw error;
+  }
+};
+
+export const updateAttendanceStatus = async (cedula: string, enabled: boolean) => {
+  try {
+    const docRef = doc(db, COLLECTIONS.ATTENDANCE, cedula);
+    await updateDoc(docRef, { enabled });
+  } catch (error) {
+    console.error('Error updating attendance status:', error);
     throw error;
   }
 };

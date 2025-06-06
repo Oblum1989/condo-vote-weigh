@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type UserRole = 'admin_votacion' | 'admin_asistencias' | null;
@@ -37,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (username: string, password: string, role: UserRole): boolean => {
     if (!role || !CREDENTIALS[role]) return false;
-    
+
     const credentials = CREDENTIALS[role];
     if (credentials.username === username && credentials.password === password) {
       const newUser = { role, username };

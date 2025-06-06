@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +25,7 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
     setIsLoading(true);
 
     const success = login(username, password, role);
-    
+
     if (success) {
       toast({
         title: "Acceso concedido",
@@ -59,6 +58,19 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
         </CardTitle>
       </CardHeader>
       <CardContent>
+
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <h3 className="font-semibold mb-2">Credenciales de Acceso:</h3>
+          <p className="text-sm text-gray-600">
+            <strong>Usuario:</strong> admin_votacion<br />
+            <strong>Contraseña:</strong> admin123
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Nota: En un ambiente de producción, estas credenciales serían diferentes y seguras.
+          </p>
+        </div>
+
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username">Usuario</Label>
@@ -69,14 +81,15 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Nombre de usuario"
+                placeholder="Ingrese su nombre de usuario"
+
                 className="pl-10"
                 disabled={isLoading}
                 required
               />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="password">Contraseña</Label>
             <div className="relative">
@@ -86,17 +99,18 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Contraseña"
+                placeholder="Ingrese su contraseña"
                 className="pl-10"
                 disabled={isLoading}
                 required
               />
             </div>
           </div>
-          
-          <Button 
-            type="submit" 
-            className="w-full" 
+
+          <Button
+            type="submit"
+            className="w-full"
+
             disabled={isLoading}
           >
             {isLoading ? "Autenticando..." : "Iniciar Sesión"}
