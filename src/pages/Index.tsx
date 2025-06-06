@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import VotingForm from "@/components/VotingForm";
 import VotingResults from "@/components/VotingResults";
 import AdminPanel from "@/components/AdminPanel";
@@ -15,7 +15,9 @@ import {
   resetVotes as firebaseResetVotes,
   updateVotingState as firebaseUpdateVotingState,
   updateVoterWeights as firebaseUpdateVoterWeights,
-  validateVoter
+  validateVoter,
+  getAllAttendance,
+  updateAttendanceStatus
 } from "@/services/firebaseService";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -236,6 +238,26 @@ const Index = () => {
     }
   };
 
+  const loadAttendance = useCallback(async () => {
+    try {
+      const attendanceList = await getAllAttendance();
+      setAttendance(attendanceList);
+    } catch (error) {
+      console.error('Error loading attendance:', error);
+      toast({
+        title: "Error",
+        description: "Error al cargar la lista de asistencia",
+        variant: "destructive"
+      });
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (currentView === 'attendance') {
+      loadAttendance();
+    }
+  }, [currentView, loadAttendance]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -381,34 +403,19 @@ const Index = () => {
               voterWeights={voterWeights}
               voters={voters}
               onUpdateVoterWeights={updateVoterWeights}
+              onAttendanceUpdate={loadAttendance}
               onToggleAttendance={async (record) => {
-                const newAttendance = attendance.map(item =>
-                  item.cedula === record.cedula
-                    ? { ...item, enabled: !item.enabled }
-                    : item
-                );
-                if (!attendance.find(item => item.cedula === record.cedula)) {
-                  newAttendance.push({
-                    ...record,
-                    timestamp: Date.now()
+                try {
+                  await updateAttendanceStatus(record.cedula, !record.enabled);
+                  await loadAttendance(); // Recargar la lista después de actualizar
+                } catch (error) {
+                  console.error('Error updating attendance:', error);
+                  toast({
+                    title: "Error",
+                    description: "Error al actualizar el estado de asistencia",
+                    variant: "destructive"
                   });
                 }
-                setAttendance(newAttendance);
-                // TODO: Update in Firebase
-              }}
-              onSearch={async (cedula) => {
-                // Buscar en la lista de votantes
-                for (const [apartment, voter] of Object.entries(voters)) {
-                  if (voter.cedula === cedula) {
-                    const existingAttendance = attendance.find(a => a.cedula === cedula);
-                    return {
-                      cedula,
-                      apartment,
-                      enabled: existingAttendance?.enabled || false
-                    };
-                  }
-                }
-                return null;
               }}
             />
           ) : (

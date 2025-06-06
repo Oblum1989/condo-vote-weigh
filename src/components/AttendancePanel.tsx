@@ -30,6 +30,7 @@ interface AttendancePanelProps {
   voterWeights: { [key: string]: number };
   voters: Voters;
   onUpdateVoterWeights: (weights: { [key: string]: number }) => void;
+  onAttendanceUpdate?: () => void;  // Nueva prop para notificar actualizaciones
 }
 
 const AttendancePanel = ({
@@ -37,7 +38,8 @@ const AttendancePanel = ({
   onToggleAttendance,
   voterWeights,
   voters,
-  onUpdateVoterWeights
+  onUpdateVoterWeights,
+  onAttendanceUpdate
 }: AttendancePanelProps) => {
   const [searchCedula, setSearchCedula] = useState("");
   const [searchResult, setSearchResult] = useState<AttendanceData | null>(null);
@@ -75,8 +77,11 @@ const AttendancePanel = ({
         return;
       }
 
-      // Si no está registrado, buscar en la lista de votantes
-      const voter = Object.entries(voters).find(([_, v]) => v.cedula === searchCedula)?.[1];
+      // Buscar en localVoters y voters
+      const voterFromLocal = Object.values(localVoters).find(v => v.cedula === searchCedula);
+      const voterFromProps = Object.values(voters).find(v => v.cedula === searchCedula);
+      const voter = voterFromLocal || voterFromProps;
+
       if (!voter) {
         toast({
           title: "No encontrado",
@@ -96,6 +101,7 @@ const AttendancePanel = ({
 
       await registerAttendance(attendanceData);
       setSearchResult(attendanceData);
+      onAttendanceUpdate?.(); // Notificar que se registró una nueva asistencia
 
       toast({
         title: "Éxito",
@@ -308,7 +314,10 @@ const AttendancePanel = ({
                     </div>
                     <Button
                       variant={searchResult.enabled ? "destructive" : "default"}
-                      onClick={() => onToggleAttendance(searchResult)}
+                      onClick={() => {
+                        onToggleAttendance(searchResult);
+                        if (onAttendanceUpdate) onAttendanceUpdate();
+                      }}
                     >
                       {searchResult.enabled ? "Deshabilitar" : "Habilitar"}
                     </Button>
@@ -360,7 +369,10 @@ const AttendancePanel = ({
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <Button
                             variant="ghost"
-                            onClick={() => onToggleAttendance(record)}
+                            onClick={() => {
+                              onToggleAttendance(record);
+                              if (onAttendanceUpdate) onAttendanceUpdate();
+                            }}
                             className={record.enabled ? "text-red-600" : "text-green-600"}
                           >
                             {record.enabled ? "Deshabilitar" : "Habilitar"}
