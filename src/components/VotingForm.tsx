@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,15 @@ import { CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { checkIfVoted, validateVoter, checkAttendance } from "@/services/firebaseService";
 import { useVotingStore } from "@/store/useVotingStore";
+import { useDebounce } from "@/hooks/use-debounce";
+import { ValidationResult, AttendanceStatus, CachedData, ValidationResponse } from "@/types/validation";
+
+// Cache para almacenar resultados de validación
+type CacheValue = boolean | ValidationResult | AttendanceStatus;
+const validationCache = new Map<string, CachedData<CacheValue>>();
+
+// Tiempo de expiración del caché (5 minutos)
+const CACHE_EXPIRATION = 5 * 60 * 1000;
 
 interface VotingFormProps {
   isAdmin?: boolean;
@@ -25,81 +34,125 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
     apartment: { isValid: boolean; message: string | null } | null;
   }>({ voterId: null, apartment: null });
   const [isAttendanceEnabled, setIsAttendanceEnabled] = useState<boolean | null>(null);
+  const lastValidationTime = useRef<number>(0);
 
   // Zustand store
   const voterWeights = useVotingStore((state) => state.voterWeights);
   const votingState = useVotingStore((state) => state.votingState);
   const addVote = useVotingStore((state) => state.addVote);
 
-  // Verificar si el ID ya votó en Firebase
-  useEffect(() => {
-    const checkVoteStatus = async () => {
-      if (voterId.trim() && apartment.trim()) {
-        setCheckingVote(true);
-        try {
-          const voted = await checkIfVoted(voterId);
-          setHasVoted(voted);
-        } catch (error) {
-          console.error('Error checking vote status:', error);
-        }
-        setCheckingVote(false);
-      } else {
-        setHasVoted(false);
-      }
-    };
+  // Debounce los valores de input para reducir las validaciones
+  const debouncedVoterId = useDebounce(voterId, 800);
+  const debouncedApartment = useDebounce(apartment, 800);
 
-    const timeoutId = setTimeout(checkVoteStatus, 500);
-    return () => clearTimeout(timeoutId);
-  }, [voterId, apartment]);
+  // Funciones específicas de caché para cada tipo de dato
+  const getCachedVoteStatus = useCallback(async (id: string): Promise<boolean> => {
+    const key = `vote-${id}`;
+    const cached = validationCache.get(key);
+    const now = Date.now();
 
-  // Efecto para validar el ID y apartamento
+    if (cached && now - cached.timestamp < CACHE_EXPIRATION) {
+      return cached.data as boolean;
+    }
+
+    const data = await checkIfVoted(id);
+    validationCache.set(key, { timestamp: now, data });
+    return data;
+  }, []);
+
+  const getCachedValidation = useCallback(async (id: string, apt: string): Promise<ValidationResult> => {
+    const key = `${id}-${apt}`;
+    const cached = validationCache.get(key);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < CACHE_EXPIRATION) {
+      return cached.data as ValidationResult;
+    }
+
+    const data = await validateVoter(id, apt);
+    validationCache.set(key, { timestamp: now, data });
+    return data;
+  }, []);
+
+  const getCachedAttendance = useCallback(async (id: string): Promise<AttendanceStatus> => {
+    const key = `attendance-${id}`;
+    const cached = validationCache.get(key);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < CACHE_EXPIRATION) {
+      return cached.data as AttendanceStatus;
+    }
+
+    const data = await checkAttendance(id);
+    validationCache.set(key, { timestamp: now, data });
+    return data;
+  }, []);
+
+  // Validación combinada para reducir llamadas
+  const validateAll = useCallback(async (id: string, apt: string): Promise<ValidationResponse | null> => {
+    if (!id.trim() || !apt.trim() || id.length < 3 || apt.length < 1) {
+      return null;
+    }
+
+    // Evitar validaciones muy frecuentes
+    const now = Date.now();
+    if (now - lastValidationTime.current < 2000) { // 2 segundos mínimo entre validaciones
+      return null;
+    }
+    lastValidationTime.current = now;
+
+    try {
+      const [voteStatus, validation, attendance] = await Promise.all([
+        getCachedVoteStatus(id),
+        getCachedValidation(id, apt),
+        getCachedAttendance(id)
+      ]);
+
+      return {
+        voteStatus,
+        validation,
+        attendance
+      };
+    } catch (error) {
+      console.error('Validation error:', error);
+      return null;
+    }
+  }, [getCachedVoteStatus, getCachedValidation, getCachedAttendance]);
+
+  // Efecto unificado para todas las validaciones
   useEffect(() => {
-    const validateFields = async () => {
-      if (voterId.trim() && apartment.trim()) {
-        const validation = await validateVoter(voterId, apartment);
-        if (validation.valid) {
-          const weight = voterWeights[apartment];
-          setValidationState({
-            voterId: { isValid: true, message: `ID válido - Peso del voto: ${weight}` },
-            apartment: { isValid: true, message: `Apartamento válido` }
-          });
-        } else {
-          setValidationState({
-            voterId: { isValid: false, message: "ID no encontrado en la base de datos" },
-            apartment: { isValid: false, message: validation.error || "Datos no válidos" }
-          });
-        }
+    let isActive = true;
+
+    const performValidation = async () => {
+      const result = await validateAll(debouncedVoterId, debouncedApartment);
+
+      if (!isActive || !result) return;
+
+      const { voteStatus, validation, attendance } = result;
+
+      setHasVoted(voteStatus);
+      setIsAttendanceEnabled(attendance?.enabled ?? false);
+
+      if (validation.valid) {
+        const weight = voterWeights[debouncedApartment];
+        setValidationState({
+          voterId: { isValid: true, message: `ID válido - Peso del voto: ${weight}` },
+          apartment: { isValid: true, message: `Apartamento válido` }
+        });
       } else {
         setValidationState({
-          voterId: voterId.trim() ? null : { isValid: false, message: "La cédula es obligatoria" },
-          apartment: apartment.trim() ? null : { isValid: false, message: "El apartamento es obligatorio" }
+          voterId: { isValid: false, message: "ID no encontrado en la base de datos" },
+          apartment: { isValid: false, message: validation.error || "Datos no válidos" }
         });
       }
     };
 
-    const timeoutId = setTimeout(validateFields, 500);
-    return () => clearTimeout(timeoutId);
-  }, [voterId, apartment, voterWeights]);
+    performValidation();
 
-  // Verificar asistencia cuando se ingresa la cédula
-  useEffect(() => {
-    const checkAttendanceStatus = async () => {
-      if (voterId.trim()) {
-        try {
-          const attendance = await checkAttendance(voterId);
-          setIsAttendanceEnabled(attendance?.enabled ?? false);
-        } catch (error) {
-          console.error('Error checking attendance:', error);
-          setIsAttendanceEnabled(false);
-        }
-      } else {
-        setIsAttendanceEnabled(null);
-      }
+    return () => {
+      isActive = false;
     };
-
-    const timeoutId = setTimeout(checkAttendanceStatus, 500);
-    return () => clearTimeout(timeoutId);
-  }, [voterId]);
+  }, [debouncedVoterId, debouncedApartment, validateAll, voterWeights]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,28 +166,23 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
       return;
     }
 
-    if (!selectedVote) {
+    // Validación final antes de enviar
+    const finalValidation = await validateAll(voterId, apartment);
+    if (!finalValidation) {
       toast({
         title: "Error",
-        description: "Debe seleccionar una opción de voto",
+        description: "Por favor, verifique los datos ingresados",
         variant: "destructive"
       });
       return;
     }
 
-    if (!isAttendanceEnabled) {
-      toast({
-        title: "No habilitado",
-        description: "El votante no está habilitado para votar. Por favor, regístrese en la asistencia.",
-        variant: "destructive"
-      });
-      return;
-    }
+    const { voteStatus, validation, attendance } = finalValidation;
 
-    if (hasVoted) {
+    if (!validation.valid || voteStatus || !attendance?.enabled || !selectedVote) {
       toast({
         title: "Error",
-        description: "Esta cédula ya ha votado",
+        description: "No se puede proceder con el voto. Verifique sus datos.",
         variant: "destructive"
       });
       return;
@@ -144,6 +192,12 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
 
     try {
       await addVote(voterId, apartment, selectedVote);
+
+      // Actualizar el caché después de votar
+      validationCache.set(`vote-${voterId}`, {
+        timestamp: Date.now(),
+        data: true
+      });
 
       toast({
         title: "¡Voto registrado!",
@@ -198,7 +252,7 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
             {/* Voter ID Input */}
             <div className="space-y-2">
               <Label htmlFor="voterId">Número de Cédula</Label>
-              <div className="relative">
+              <div>
                 <Input
                   id="voterId"
                   type="text"
@@ -207,10 +261,10 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
                   placeholder="Ingrese su número de cédula"
                   disabled={isSubmitting || checkingVote}
                   required
-                  className={voterId.trim() ? (validationState.voterId?.isValid ? "pr-24 border-green-500" : "pr-24 border-red-500") : ""}
+                  className={voterId.trim() ? (validationState.voterId?.isValid ? "border-green-500" : "border-red-500") : ""}
                 />
                 {voterId.trim() && (
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 text-sm">
+                  <div className="mt-2 flex items-center text-sm">
                     {validationState.voterId?.isValid ? (
                       <>
                         <CheckCircle className="text-green-500 mr-2" size={18} />
@@ -230,7 +284,7 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
             {/* Apartment Input */}
             <div className="space-y-2">
               <Label htmlFor="apartment">Número de Apartamento</Label>
-              <div className="relative">
+              <div>
                 <Input
                   id="apartment"
                   type="text"
@@ -239,10 +293,10 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
                   placeholder="Ingrese su número de apartamento"
                   disabled={isSubmitting || checkingVote}
                   required
-                  className={apartment.trim() ? (validationState.apartment?.isValid ? "pr-24 border-green-500" : "pr-24 border-red-500") : ""}
+                  className={apartment.trim() ? (validationState.apartment?.isValid ? "border-green-500" : "border-red-500") : ""}
                 />
                 {apartment.trim() && (
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 text-sm">
+                  <div className="mt-2 flex items-center text-sm">
                     {validationState.apartment?.isValid ? (
                       <>
                         <CheckCircle className="text-green-500 mr-2" size={18} />
