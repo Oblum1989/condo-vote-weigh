@@ -19,7 +19,6 @@ import {
   Settings,
   Trash,
   Check,
-  Users,
   BarChart3
 } from "lucide-react";
 import type { VotingQuestion } from "@/types";
@@ -30,6 +29,7 @@ import {
   deleteQuestion as firebaseDeleteQuestion
 } from "@/services/firebaseService";
 import { useVotingStore } from "@/store/useVotingStore";
+import StatsPanel from "./StatsPanel";
 
 interface AdminPanelProps {
   isAuthenticated: boolean;
@@ -49,8 +49,6 @@ const AdminPanel = ({ isAuthenticated, onAuthenticate }: AdminPanelProps) => {
   const { toast } = useToast();
 
   // Zustand store
-  const votes = useVotingStore((state) => state.votes);
-  const voterWeights = useVotingStore((state) => state.voterWeights);
   const votingState = useVotingStore((state) => state.votingState);
   const updateVotingState = useVotingStore((state) => state.updateVotingState);
 
@@ -295,39 +293,7 @@ const AdminPanel = ({ isAuthenticated, onAuthenticate }: AdminPanelProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Estadísticas */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="text-purple-600" size={24} />
-            Estadísticas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{votes.length}</div>
-              <div className="text-sm text-gray-600">Votos Emitidos</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {Object.keys(voterWeights).length}
-              </div>
-              <div className="text-sm text-gray-600">Votantes Registrados</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {votingState.isActive ? 'ACTIVA' : 'INACTIVA'}
-              </div>
-              <div className="text-sm text-gray-600">Estado Votación</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">{questions.length}</div>
-              <div className="text-sm text-gray-600">Preguntas Creadas</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <StatsPanel questions={questions} />
 
       {/* Control de Votación y Resultados */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
