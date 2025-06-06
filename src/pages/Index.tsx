@@ -2,30 +2,43 @@ import { useState, useEffect } from "react";
 import VotingForm from "@/components/VotingForm";
 import VotingResults from "@/components/VotingResults";
 import AdminPanel from "@/components/AdminPanel";
+import LoginForm from "@/components/LoginForm";
+import AttendancePanel from "@/components/AttendancePanel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Vote, BarChart3, Users, Settings } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Vote, BarChart3, Users, Settings, LogOut } from "lucide-react";
 import {
   subscribeToVotes,
   subscribeToVotingState,
   getVoterWeights,
-  getQuestions,
   addVote as firebaseAddVote,
   resetVotes as firebaseResetVotes,
   updateVotingState as firebaseUpdateVotingState,
-  updateVoterWeights as firebaseUpdateVoterWeights
+  updateVoterWeights as firebaseUpdateVoterWeights,
+  validateVoter
 } from "@/services/firebaseService";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface VoteData {
   id: string;
-  vote: 'si' | 'no' | 'blanco';
+  apartment: string;
+  vote: string;  // Ahora acepta cualquier string para las opciones de voto
   weight: number;
-  timestamp: number;
+  timestamp?: number;
 }
 
 export interface VoterWeights {
   [key: string]: number;
+}
+
+export interface Voter {
+  cedula: string;
+  apartment: string;
+}
+
+export interface Voters {
+  [apartment: string]: Voter;
 }
 
 export interface VotingQuestion {
@@ -41,22 +54,31 @@ export interface VotingQuestion {
 export interface VotingState {
   isActive: boolean;
   question: VotingQuestion | null;
-  startTime?: number | null;
-  endTime?: number | null;
+  startTime?: number;
+  endTime?: number;
+  showResults: boolean;
 }
 
 const Index = () => {
-  const [currentView, setCurrentView] = useState<'voting' | 'results' | 'admin'>('voting');
+  const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState("");
   const [votes, setVotes] = useState<VoteData[]>([]);
+  const [voters, setVoters] = useState<Voters>({});
   const [voterWeights, setVoterWeights] = useState<VoterWeights>({});
+  const [attendance, setAttendance] = useState<Array<{
+    cedula: string;
+    apartment: string;
+    enabled: boolean;
+    timestamp: number;
+  }>>([]);
   const [votingState, setVotingState] = useState<VotingState>({
     isActive: false,
-    question: null
+    question: null,
+    showResults: false
   });
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingStep, setLoadingStep] = useState<string>('Iniciando aplicación...');
+  const [currentView, setCurrentView] = useState<'voting' | 'results' | 'admin_votacion' | 'attendance'>('voting');
   const { toast } = useToast();
+  const { user, hasRole, logout } = useAuth();
 
   // Cargar datos iniciales y configurar listeners
   useEffect(() => {
@@ -100,16 +122,28 @@ const Index = () => {
     initializeData();
   }, [toast]);
 
-  const addVote = async (voterId: string, voteOption: 'si' | 'no' | 'blanco') => {
+  const addVote = async (voterId: string, apartment: string, voteOption: string) => {
     if (!votingState.isActive) {
       console.error('La votación no está activa');
       return;
     }
 
     try {
-      const weight = voterWeights[voterId] || 1.0;
+      // Validar el votante
+      const validation = await validateVoter(voterId, apartment);
+      if (!validation.valid) {
+        toast({
+          title: "Error de validación",
+          description: validation.error,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const weight = voterWeights[apartment] || 1.0;
       const newVote = {
         id: voterId,
+        apartment,
         vote: voteOption,
         weight
       };
@@ -222,32 +256,38 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-3">
-            <Vote className="text-blue-600" size={48} />
-            Sistema de Votación Asamblea
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Votación electrónica con pesos diferenciados
-          </p>
-
-          {/* Estado de la votación */}
-          <div className="mt-4">
+      <div className="container mx-auto py-8 px-4">
+        {/* Status Banner */}
+        <div className="mb-6">
+          <div className="flex items-center justify-center gap-4 bg-white p-4 rounded-lg shadow text-lg">
             {votingState.isActive ? (
-              <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-full">
+              <div className="flex items-center text-green-600">
                 <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-                Votación ACTIVA
+                Votación ACTIVA: {votingState.question?.title}
               </div>
             ) : (
-              <div className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-600 rounded-full">
+              <div className="flex items-center text-gray-600">
                 <div className="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
                 Votación INACTIVA
               </div>
             )}
           </div>
         </div>
+
+        {/* User info and logout */}
+        {user && (
+          <div className="flex justify-end mb-4">
+            <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-lg shadow">
+              <span className="text-sm text-gray-600">
+                Sesión: Admin Votación
+              </span>
+              <Button variant="outline" size="sm" onClick={logout}>
+                <LogOut size={16} />
+                Salir
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Navigation */}
         <div className="flex justify-center mb-8 gap-4 flex-wrap">
@@ -256,27 +296,48 @@ const Index = () => {
             variant={currentView === 'voting' ? 'default' : 'outline'}
             className="flex items-center gap-2"
           >
-            <Users size={20} />
+            <Vote size={20} />
             Votación
           </Button>
-          {isAdminAuthenticated && (
-            <Button
-              onClick={() => setCurrentView('results')}
-              variant={currentView === 'results' ? 'default' : 'outline'}
-              className="flex items-center gap-2"
-            >
-              <BarChart3 size={20} />
-              Resultados
-            </Button>
-          )}
+
           <Button
-            onClick={() => setCurrentView('admin')}
-            variant={currentView === 'admin' ? 'default' : 'outline'}
+            onClick={() => setCurrentView('results')}
+            variant={currentView === 'results' ? 'default' : 'outline'}
             className="flex items-center gap-2"
           >
-            <Settings size={20} />
-            Administración
+            <BarChart3 size={20} />
+            Resultados
           </Button>
+
+          {!user ? (
+            <Button
+              onClick={() => setCurrentView('admin_votacion')}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Settings size={20} />
+              Iniciar Sesión Admin
+            </Button>
+          ) : hasRole('admin_votacion') && (
+            <>
+              <Button
+                onClick={() => setCurrentView('admin_votacion')}
+                variant={currentView === 'admin_votacion' ? 'default' : 'outline'}
+                className="flex items-center gap-2"
+              >
+                <Settings size={20} />
+                Panel Admin
+              </Button>
+              <Button
+                onClick={() => setCurrentView('attendance')}
+                variant={currentView === 'attendance' ? 'default' : 'outline'}
+                className="flex items-center gap-2"
+              >
+                <Users size={20} />
+                Panel de Asistencia
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Content */}
@@ -288,23 +349,73 @@ const Index = () => {
               existingVotes={votes}
               votingState={votingState}
             />
-          ) : currentView === 'results' && isAdminAuthenticated ? (
+          ) : currentView === 'results' ? (
             <VotingResults
               votes={votes}
-              onReset={resetVotes}
-              onExport={exportVotes}
+              onReset={hasRole('admin_votacion') ? resetVotes : undefined}
+              onExport={hasRole('admin_votacion') ? exportVotes : undefined}
               votingState={votingState}
+              isAdmin={hasRole('admin_votacion')}
             />
-          ) : (
+          ) : currentView === 'admin_votacion' && !hasRole('admin_votacion') ? (
+            <LoginForm
+              role="admin_votacion"
+              title="Administrador de Votación"
+              onSuccess={() => {
+                // El usuario ya está autenticado, se re-renderizará
+              }}
+            />
+          ) : currentView === 'admin_votacion' && hasRole('admin_votacion') ? (
             <AdminPanel
               votingState={votingState}
               onUpdateVotingState={updateVotingState}
               voterWeights={voterWeights}
               onUpdateVoterWeights={updateVoterWeights}
               votes={votes}
-              isAuthenticated={isAdminAuthenticated}
-              onAuthenticate={setIsAdminAuthenticated}
+              isAuthenticated={true}
+              onAuthenticate={() => { }} // No longer needed with AuthContext
             />
+          ) : currentView === 'attendance' && hasRole('admin_votacion') ? (
+            <AttendancePanel
+              attendance={attendance}
+              voterWeights={voterWeights}
+              voters={voters}
+              onUpdateVoterWeights={updateVoterWeights}
+              onToggleAttendance={async (record) => {
+                const newAttendance = attendance.map(item =>
+                  item.cedula === record.cedula
+                    ? { ...item, enabled: !item.enabled }
+                    : item
+                );
+                if (!attendance.find(item => item.cedula === record.cedula)) {
+                  newAttendance.push({
+                    ...record,
+                    timestamp: Date.now()
+                  });
+                }
+                setAttendance(newAttendance);
+                // TODO: Update in Firebase
+              }}
+              onSearch={async (cedula) => {
+                // Buscar en la lista de votantes
+                for (const [apartment, voter] of Object.entries(voters)) {
+                  if (voter.cedula === cedula) {
+                    const existingAttendance = attendance.find(a => a.cedula === cedula);
+                    return {
+                      cedula,
+                      apartment,
+                      enabled: existingAttendance?.enabled || false
+                    };
+                  }
+                }
+                return null;
+              }}
+            />
+          ) : (
+            <div className="text-center py-8">
+              <h2 className="text-2xl font-bold mb-4">Acceso Denegado</h2>
+              <p className="text-gray-600">No tienes permisos para ver esta sección</p>
+            </div>
           )}
         </div>
       </div>

@@ -28,7 +28,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   getQuestions,
   addQuestion as firebaseAddQuestion,
-  deleteQuestion as firebaseDeleteQuestion
+  deleteQuestion as firebaseDeleteQuestion,
+  addVoter,
+  getAllVoters
 } from "@/services/firebaseService";
 
 interface AdminPanelProps {
@@ -52,6 +54,7 @@ const AdminPanel = ({
 }: AdminPanelProps) => {
   const [password, setPassword] = useState("");
   const [questions, setQuestions] = useState<VotingQuestion[]>([]);
+  const [voters, setVoters] = useState<Record<string, { cedula: string, apartment: string }>>({});
   const [newQuestion, setNewQuestion] = useState({
     title: "",
     description: "",
@@ -77,7 +80,18 @@ const AdminPanel = ({
     }
   }, [toast]);
 
-  // Función movida a AttendancePanel
+  const loadVoters = async () => {
+    try {
+      const votersList = await getAllVoters();
+      const votersMap = votersList.reduce((acc, voter) => {
+        acc[voter.apartment] = voter;
+        return acc;
+      }, {} as Record<string, { cedula: string, apartment: string }>);
+      setVoters(votersMap);
+    } catch (error) {
+      console.error('Error loading voters:', error);
+    }
+  };
 
   const addOption = () => {
     setNewQuestion(prev => ({
@@ -111,6 +125,7 @@ const AdminPanel = ({
   useEffect(() => {
     if (isAuthenticated) {
       loadQuestions();
+      loadVoters();
     }
   }, [isAuthenticated, loadQuestions]);
 
@@ -251,7 +266,71 @@ const AdminPanel = ({
     }
   };
 
-  // Funciones movidas a AttendancePanel
+  const processCSVFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n');
+        const weights: VoterWeights = {};
+        const voterPromises: Promise<void>[] = [];
+
+        const startIndex = lines[0].toLowerCase().includes('cedula') ? 1 : 0;
+
+        for (let i = startIndex; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line) {
+            const [cedula, apartment, weight] = line.split(',').map(value => value.trim());
+            const weightValue = parseFloat(weight);
+
+            if (cedula && apartment && !isNaN(weightValue) && weightValue > 0) {
+              weights[apartment] = weightValue;
+              voterPromises.push(addVoter({ cedula, apartment }));
+            }
+          }
+        }
+
+        if (Object.keys(weights).length > 0) {
+          await Promise.all(voterPromises);
+          await onUpdateVoterWeights(weights);
+          await loadVoters();
+          toast({
+            title: "Éxito",
+            description: `Se cargaron ${Object.keys(weights).length} votantes correctamente`
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "No se encontraron datos válidos en el archivo",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        console.error('Error processing CSV:', error);
+        toast({
+          title: "Error",
+          description: "Error al procesar el archivo CSV",
+          variant: "destructive"
+        });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== "text/csv" && !file.name.endsWith('.csv')) {
+        toast({
+          title: "Error",
+          description: "Por favor, sube un archivo CSV válido",
+          variant: "destructive"
+        });
+        return;
+      }
+      processCSVFile(file);
+    }
+  };
 
   const toggleResultVisibility = async () => {
     try {
@@ -545,7 +624,71 @@ const AdminPanel = ({
         </CardContent>
       </Card>
 
-      {/* La sección de Gestión de Votantes se movió a AttendancePanel */}
+      {/* Gestión de Votantes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="text-indigo-600" size={24} />
+            Gestión de Votantes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-semibold mb-2">Cargar Votantes desde CSV</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              El archivo CSV debe tener tres columnas: cédula, apartamento y peso del voto.
+              <br />
+              Ejemplo: 123456789,A101,1.5
+            </p>
+            <div className="flex items-center gap-4">
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const template = "cedula,apartamento,peso\n123456789,A101,1.5\n987654321,A102,2.0";
+                  const blob = new Blob([template], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'plantilla_votantes.csv';
+                  a.click();
+                }}
+              >
+                Descargar Plantilla
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="font-semibold mb-2">Votantes Registrados: {Object.keys(voterWeights).length}</h4>
+            <div className="max-h-60 overflow-y-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Cédula</th>
+                    <th className="px-4 py-2 text-left">Apartamento</th>
+                    <th className="px-4 py-2 text-left">Peso del Voto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {Object.entries(voterWeights).map(([apartment, weight]) => (
+                    <tr key={apartment}>
+                      <td className="px-4 py-2">{voters[apartment]?.cedula || '-'}</td>
+                      <td className="px-4 py-2">{apartment}</td>
+                      <td className="px-4 py-2">{weight}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

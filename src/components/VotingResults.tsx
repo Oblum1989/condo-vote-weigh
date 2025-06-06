@@ -2,18 +2,27 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, XCircle, Circle, Download, TrendingUp, Clock, RotateCcw } from "lucide-react";
+import { CheckCircle, XCircle, Circle, Download, TrendingUp, Clock, RotateCcw, Lock } from "lucide-react";
 import { VoteData, VotingState } from "@/pages/Index";
 import { getAllVotes } from "@/services/firebaseService";
+import { useToast } from "@/hooks/use-toast";
 
 interface VotingResultsProps {
-  votes: VoteData[]; // Votos en tiempo real
+  votes: VoteData[];
   onReset: () => void;
   onExport: () => void;
   votingState: VotingState;
+  isAdmin?: boolean;
 }
 
-const VotingResults = ({ votes: realtimeVotes, onReset, onExport, votingState }: VotingResultsProps) => {
+const VotingResults = ({
+  votes: realtimeVotes,
+  onReset,
+  onExport,
+  votingState,
+  isAdmin = false
+}: VotingResultsProps) => {
+  const { toast } = useToast();
   const [allVotes, setAllVotes] = useState<VoteData[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -90,136 +99,127 @@ const VotingResults = ({ votes: realtimeVotes, onReset, onExport, votingState }:
     );
   }
 
-  return (
-    <div className="space-y-6">
+  if (!isAdmin && !votingState.showResults) {
+    return (
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Panel de Resultados</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Total de votos registrados: {allVotesTotals.total.toFixed(2)}
+        <CardContent className="pt-6">
+          <div className="text-center">
+            <Lock className="mx-auto text-gray-400 mb-4" size={48} />
+            <h3 className="text-lg font-semibold mb-2">Resultados no disponibles</h3>
+            <p className="text-gray-600">
+              Los resultados serán visibles cuando el administrador lo habilite.
             </p>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-blue-600">
-              {allVotes.length}
-            </div>
-            <div className="text-sm text-muted-foreground">Total de Votos</div>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            {(['si', 'no', 'blanco'] as const).map((voteType) => {
-              const voteCount = allVotesTotals[voteType === 'si' ? 'yes' : voteType === 'no' ? 'no' : 'blank'];
-              const percentage = getPercentage(voteCount, allVotesTotals.total);
-
-              return (
-                <div key={voteType} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {getVoteIcon(voteType)}
-                    <span className="font-medium">{getVoteLabel(voteType)}</span>
-                  </div>
-
-                  <Progress value={percentage} className="h-2" />
-
-                  <div className="flex justify-between items-start">
-                    <div className="text-2xl font-bold">
-                      {percentage ? percentage.toFixed(1) : '0'}%
-                    </div>
-
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <div>Votos: {voteCount ? voteCount.toFixed(2) : '0'}</div>
-                      <div>Peso total: {voteCount ? voteCount.toFixed(2) : '0'}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <TrendingUp className="text-blue-600" size={24} />
-              <div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {allVotesTotals.total.toFixed(2)}
-                </div>
-                <div className="text-sm text-gray-600">Total Votos</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <Clock className="text-blue-600" size={24} />
-              <div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {votingState.startTime ? formatTime(votingState.startTime) : 'No iniciada'}
-                </div>
-                <div className="text-sm text-gray-600">Hora Inicio</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <Clock className="text-blue-600" size={24} />
-              <div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {votingState.endTime ? formatTime(votingState.endTime) : 'En curso'}
-                </div>
-                <div className="text-sm text-gray-600">Hora Fin</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <Button
-                onClick={onReset}
-                variant="destructive"
-                className="flex items-center gap-2"
-                disabled={allVotes.length === 0}
-              >
-                <RotateCcw size={20} />
-                Resetear Votación
-              </Button>
-              <Button onClick={onExport}>
-                <Download size={20} className="mr-2" />
-                Descargar Registro Detallado (CSV)
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
+    );
+  }
 
+  // Calcular resultados
+  const totalVotes = realtimeVotes.length;
+  const totalWeight = realtimeVotes.reduce((sum, vote) => sum + vote.weight, 0);
+
+  const results = realtimeVotes.reduce((acc, vote) => {
+    acc[vote.vote] = {
+      count: (acc[vote.vote]?.count || 0) + 1,
+      weight: (acc[vote.vote]?.weight || 0) + vote.weight
+    };
+    return acc;
+  }, {} as Record<string, { count: number; weight: number }>);
+
+  // Calcular porcentajes
+  const calculatePercentage = (weight: number) => {
+    return totalWeight > 0 ? (weight / totalWeight) * 100 : 0;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Current Question */}
+      {votingState.question && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="bg-blue-50 p-4 rounded-lg space-y-2">
+              <h2 className="text-xl font-semibold">{votingState.question.title}</h2>
+              {votingState.question.description && (
+                <p className="text-gray-600">{votingState.question.description}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Results */}
       <Card>
         <CardHeader>
-          <CardTitle>Historial Completo de Votos ({allVotes.length})</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Total de votos registrados: {Math.ceil(allVotesTotals.total)}
-          </p>
+          <CardTitle>Resultados de la Votación</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-lg font-semibold">Votos SÍ</div>
-                <div className="text-2xl font-bold text-green-600">
-                  {allVotesTotals.yes ? allVotesTotals.yes.toFixed(2) : '0'} ({allVotesTotals.total ? ((allVotesTotals.yes / allVotesTotals.total) * 100).toFixed(1) : '0'}%)
-                </div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-lg font-semibold">Votos NO</div>
-                <div className="text-2xl font-bold text-red-600">
-                  {allVotesTotals.no ? allVotesTotals.no.toFixed(2) : '0'} ({allVotesTotals.total ? ((allVotesTotals.no / allVotesTotals.total) * 100).toFixed(1) : '0'}%)
-                </div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-lg font-semibold">Votos en Blanco</div>
-                <div className="text-2xl font-bold text-gray-600">
-                  {allVotesTotals.blank ? allVotesTotals.blank.toFixed(2) : '0'} ({allVotesTotals.total ? ((allVotesTotals.blank / allVotesTotals.total) * 100).toFixed(1) : '0'}%)
-                </div>
-              </div>
+        <CardContent className="space-y-6">
+          {/* Summary */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{totalVotes}</div>
+              <div className="text-sm text-gray-600">Votos Totales</div>
+            </div>
+            <div className="text-center p-4 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{totalWeight.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Peso Total</div>
             </div>
           </div>
+
+          {/* Detailed Results */}
+          <div className="space-y-4">
+            {Object.entries(results).map(([option, data]) => (
+              <div key={option} className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-semibold">
+                      {option.charAt(0).toUpperCase() + option.slice(1)}
+                    </span>
+                    <span className="text-sm text-gray-600 ml-2">
+                      ({data.count} votos, peso {data.weight.toFixed(1)})
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold">
+                    {calculatePercentage(data.weight).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full"
+                    style={{
+                      width: `${calculatePercentage(data.weight)}%`
+                    }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Admin Actions */}
+          {isAdmin && (
+            <div className="grid grid-cols-2 gap-4 pt-4">
+              <Button
+                variant="destructive"
+                className="w-full flex items-center justify-center gap-2 h-12"
+                onClick={() => {
+                  if (confirm('¿Está seguro de que desea resetear los votos?')) {
+                    onReset();
+                  }
+                }}
+              >
+                <RotateCcw size={20} />
+                Resetear Votos
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2 h-12"
+                onClick={onExport}
+              >
+                <Download size={20} />
+                Exportar Resultados
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

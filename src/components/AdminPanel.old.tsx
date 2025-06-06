@@ -28,7 +28,14 @@ import { useToast } from "@/hooks/use-toast";
 import {
   getQuestions,
   addQuestion as firebaseAddQuestion,
-  deleteQuestion as firebaseDeleteQuestion
+  deleteQuestion as firebaseDeleteQuestion,
+  addVoter,
+  getAllVoters,
+  registerAttendance,
+  checkAttendance,
+  getAllAttendance,
+  updateAttendanceStatus,
+  AttendanceData
 } from "@/services/firebaseService";
 
 interface AdminPanelProps {
@@ -52,15 +59,18 @@ const AdminPanel = ({
 }: AdminPanelProps) => {
   const [password, setPassword] = useState("");
   const [questions, setQuestions] = useState<VotingQuestion[]>([]);
+  const [voters, setVoters] = useState<Record<string, { cedula: string, apartment: string }>>({});
   const [newQuestion, setNewQuestion] = useState({
     title: "",
     description: "",
-    options: ["Sí", "No"] // Dos opciones por defecto
+    options: ["", ""] // Dos opciones vacías por defecto
   });
   const [isCreatingQuestion, setIsCreatingQuestion] = useState(false);
+  // Estado eliminado y movido a AttendancePanel
 
   const { toast } = useToast();
 
+  // Contraseña de administrador (en producción, esto debería estar en el backend)
   const ADMIN_PASSWORD = "admin123";
 
   const loadQuestions = useCallback(async () => {
@@ -77,7 +87,33 @@ const AdminPanel = ({
     }
   }, [toast]);
 
-  // Función movida a AttendancePanel
+  // Cargar los datos de los votantes
+  const loadVoters = async () => {
+    try {
+      const votersList = await getAllVoters();
+      const votersMap = votersList.reduce((acc, voter) => {
+        acc[voter.apartment] = voter;
+        return acc;
+      }, {} as Record<string, { cedula: string, apartment: string }>);
+      setVoters(votersMap);
+    } catch (error) {
+      console.error('Error loading voters:', error);
+    }
+  };
+
+  const loadAttendance = useCallback(async () => {
+    try {
+      const records = await getAllAttendance();
+      setAttendance(records);
+    } catch (error) {
+      console.error('Error loading attendance:', error);
+      toast({
+        title: "Error",
+        description: "Error al cargar los registros de asistencia",
+        variant: "destructive"
+      });
+    }
+  }, [toast]);
 
   const addOption = () => {
     setNewQuestion(prev => ({
@@ -111,8 +147,10 @@ const AdminPanel = ({
   useEffect(() => {
     if (isAuthenticated) {
       loadQuestions();
+      loadVoters();
+      loadAttendance();
     }
-  }, [isAuthenticated, loadQuestions]);
+  }, [isAuthenticated, loadQuestions, loadVoters, loadAttendance]);
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
@@ -132,10 +170,13 @@ const AdminPanel = ({
 
   const startVoting = async (question: VotingQuestion) => {
     try {
+      // Actualizar el estado de la pregunta
       const updatedQuestion = {
         ...question,
         isActive: true
       };
+
+      // Actualizar el estado de votación
       await onUpdateVotingState({
         isActive: true,
         question: updatedQuestion,
@@ -177,6 +218,7 @@ const AdminPanel = ({
       return;
     }
 
+    // Validar que haya al menos dos opciones
     if (newQuestion.options.length < 2) {
       toast({
         title: "Error",
@@ -186,6 +228,7 @@ const AdminPanel = ({
       return;
     }
 
+    // Validar que no haya opciones vacías
     if (newQuestion.options.some(opt => !opt.trim())) {
       toast({
         title: "Error",
@@ -229,6 +272,7 @@ const AdminPanel = ({
         await firebaseDeleteQuestion(questionId);
         await loadQuestions();
 
+        // Si es la pregunta activa, detener votación
         if (votingState.question?.id === questionId) {
           await onUpdateVotingState({
             isActive: false,
@@ -251,7 +295,80 @@ const AdminPanel = ({
     }
   };
 
-  // Funciones movidas a AttendancePanel
+  interface VoterTableData {
+    cedula: string;
+    apartment: string;
+    weight: number;
+  }
+
+  // Función para procesar el archivo CSV
+  const processCSVFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n');
+        const weights: VoterWeights = {};
+        const voterPromises: Promise<void>[] = [];
+
+        // Saltamos la primera línea si tiene encabezados
+        const startIndex = lines[0].toLowerCase().includes('cedula') ? 1 : 0;
+
+        for (let i = startIndex; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line) {
+            const [cedula, apartment, weight] = line.split(',').map(value => value.trim());
+            const weightValue = parseFloat(weight);
+
+            if (cedula && apartment && !isNaN(weightValue) && weightValue > 0) {
+              weights[apartment] = weightValue;
+              // Agregar el votante a la base de datos
+              voterPromises.push(addVoter({ cedula, apartment }));
+            }
+          }
+        }
+
+        if (Object.keys(weights).length > 0) {
+          await Promise.all(voterPromises);
+          await onUpdateVoterWeights(weights);
+          await loadVoters(); // Recargar la lista de votantes
+          toast({
+            title: "Éxito",
+            description: `Se cargaron ${Object.keys(weights).length} votantes correctamente`
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "No se encontraron datos válidos en el archivo",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        console.error('Error processing CSV:', error);
+        toast({
+          title: "Error",
+          description: "Error al procesar el archivo CSV",
+          variant: "destructive"
+        });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== "text/csv" && !file.name.endsWith('.csv')) {
+        toast({
+          title: "Error",
+          description: "Por favor, sube un archivo CSV válido",
+          variant: "destructive"
+        });
+        return;
+      }
+      processCSVFile(file);
+    }
+  };
 
   const toggleResultVisibility = async () => {
     try {
@@ -270,6 +387,77 @@ const AdminPanel = ({
       toast({
         title: "Error",
         description: "Error al cambiar la visibilidad de los resultados",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleSearchAttendance = async () => {
+    try {
+      // Primero buscar si ya está registrado
+      const existingAttendance = await checkAttendance(searchCedula);
+      if (existingAttendance) {
+        setSearchResult(existingAttendance);
+        return;
+      }
+
+      // Si no está registrado, buscar en la lista de votantes
+      const voter = Object.entries(voters).find(([_, v]) => v.cedula === searchCedula)?.[1];
+      if (!voter) {
+        toast({
+          title: "No encontrado",
+          description: "El votante no está registrado en el sistema",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Registrar asistencia
+      const attendanceData = {
+        cedula: searchCedula,
+        apartment: voter.apartment,
+        enabled: true
+      };
+      await registerAttendance(attendanceData);
+      await loadAttendance();
+      setSearchResult({
+        ...attendanceData,
+        timestamp: Date.now()
+      });
+
+      toast({
+        title: "Éxito",
+        description: "Asistencia registrada correctamente"
+      });
+    } catch (error) {
+      console.error('Error searching/registering attendance:', error);
+      toast({
+        title: "Error",
+        description: "Error al procesar la asistencia",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleToggleAttendance = async (record: AttendanceData) => {
+    try {
+      await updateAttendanceStatus(record.cedula, !record.enabled);
+      await loadAttendance();
+      if (searchResult?.cedula === record.cedula) {
+        setSearchResult({
+          ...record,
+          enabled: !record.enabled
+        });
+      }
+      toast({
+        title: "Éxito",
+        description: `Votante ${record.enabled ? "deshabilitado" : "habilitado"} correctamente`
+      });
+    } catch (error) {
+      console.error('Error toggling attendance:', error);
+      toast({
+        title: "Error",
+        description: "Error al actualizar el estado del votante",
         variant: "destructive"
       });
     }
@@ -545,7 +733,186 @@ const AdminPanel = ({
         </CardContent>
       </Card>
 
-      {/* La sección de Gestión de Votantes se movió a AttendancePanel */}
+      {/* Gestión de Asistencia */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="text-purple-600" size={24} />
+            Control de Asistencia
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <Label htmlFor="searchCedula">Buscar por Cédula</Label>
+              <div className="relative">
+                <Input
+                  id="searchCedula"
+                  type="text"
+                  placeholder="Ingrese el número de cédula"
+                  value={searchCedula}
+                  onChange={(e) => setSearchCedula(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              className="mt-8"
+              onClick={handleSearchAttendance}
+              disabled={!searchCedula.trim()}
+            >
+              Buscar
+            </Button>
+          </div>
+
+          {searchResult && (
+            <Card className="bg-gray-50">
+              <CardContent className="pt-6">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold">Cédula: {searchResult.cedula}</h3>
+                    <p className="text-sm text-gray-600">Apartamento: {searchResult.apartment}</p>
+                    <p className="text-sm text-gray-600">
+                      Estado: {searchResult.enabled ? (
+                        <span className="text-green-600">Habilitado</span>
+                      ) : (
+                        <span className="text-red-600">No Habilitado</span>
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    variant={searchResult.enabled ? "destructive" : "default"}
+                    onClick={() => handleToggleAttendance(searchResult)}
+                  >
+                    {searchResult.enabled ? "Deshabilitar" : "Habilitar"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Lista de Asistentes */}
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-4">Registro de Asistencia</h3>
+            <div className="max-h-96 overflow-y-auto rounded-lg border">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Cédula
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Apartamento
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Estado
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Hora
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {attendance.map((record) => (
+                    <tr key={record.cedula} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">{record.cedula}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{record.apartment}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${record.enabled
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                          }`}>
+                          {record.enabled ? "Habilitado" : "No Habilitado"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(record.timestamp).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleToggleAttendance(record)}
+                          className={record.enabled ? "text-red-600" : "text-green-600"}
+                        >
+                          {record.enabled ? "Deshabilitar" : "Habilitar"}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Gestión de Votantes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="text-indigo-600" size={24} />
+            Gestión de Votantes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-semibold mb-2">Cargar Votantes desde CSV</h3>              <p className="text-sm text-gray-600 mb-4">
+              El archivo CSV debe tener tres columnas: cédula, apartamento y peso del voto.
+              <br />
+              Ejemplo: 123456789,A101,1.5
+            </p>
+            <div className="flex items-center gap-4">
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const template = "cedula,apartamento,peso\n123456789,A101,1.5\n987654321,A102,2.0";
+                  const blob = new Blob([template], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'plantilla_votantes.csv';
+                  a.click();
+                }}
+              >
+                Descargar Plantilla
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="font-semibold mb-2">Votantes Registrados: {Object.keys(voterWeights).length}</h4>
+            <div className="max-h-60 overflow-y-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Cédula</th>
+                    <th className="px-4 py-2 text-left">Apartamento</th>
+                    <th className="px-4 py-2 text-left">Peso del Voto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {Object.entries(voterWeights).map(([apartment, weight]) => (
+                    <tr key={apartment}>
+                      <td className="px-4 py-2">{voters[apartment]?.cedula || '-'}</td>
+                      <td className="px-4 py-2">{apartment}</td>
+                      <td className="px-4 py-2">{weight}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
     </div>
   );
 };
