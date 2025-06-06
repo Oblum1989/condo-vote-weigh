@@ -15,23 +15,7 @@ import {
   AttendanceData
 } from "@/services/firebaseService";
 
-interface Voter {
-  cedula: string;
-  apartment: string;
-}
-
-interface Voters {
-  [apartment: string]: Voter;
-}
-
-interface AttendancePanelProps {
-  attendance: AttendanceData[];
-  onToggleAttendance: (record: AttendanceData) => void;
-  voterWeights: { [key: string]: number };
-  voters: Voters;
-  onUpdateVoterWeights: (weights: { [key: string]: number }) => void;
-  onAttendanceUpdate?: () => void;  // Nueva prop para notificar actualizaciones
-}
+import { AttendancePanelProps, Voters } from "@/types";
 
 const AttendancePanel = ({
   attendance,

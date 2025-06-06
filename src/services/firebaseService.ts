@@ -15,7 +15,7 @@ import {
   setDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { VoteData, VoterWeights, VotingState, VotingQuestion } from '@/pages/Index';
+import { VoteData, VoterWeights, VotingState, VotingQuestion, VoterData, AttendanceData } from '@/types';
 
 // Colecciones
 export const COLLECTIONS = {
@@ -26,13 +26,6 @@ export const COLLECTIONS = {
   VOTERS: 'voters',
   ATTENDANCE: 'attendance'
 };
-
-// Estructura de votante
-export interface VoterData {
-  cedula: string;
-  apartment: string;
-  attendanceApartment?: string;  // Apartamento registrado en asistencia
-}
 
 // Votos
 export const addVote = async (vote: Omit<VoteData, 'timestamp'>) => {
@@ -56,7 +49,8 @@ export const getVotes = async (): Promise<VoteData[]> => {
       id: doc.data().id,
       vote: doc.data().vote,
       weight: doc.data().weight,
-      timestamp: doc.data().timestamp
+      timestamp: doc.data().timestamp,
+      apartment: doc.data().apartment
     }));
   } catch (error) {
     console.error('Error getting votes:', error);
@@ -71,10 +65,11 @@ export const getAllVotes = async (): Promise<VoteData[]> => {
       query(collection(db, COLLECTIONS.VOTES), orderBy('timestamp', 'desc'))
     );
     return querySnapshot.docs.map(doc => ({
-      id: doc.data().id,
+      id: doc.id,
       vote: doc.data().vote,
       weight: doc.data().weight,
-      timestamp: doc.data().timestamp
+      timestamp: doc.data().timestamp,
+      apartment: doc.data().apartment
     }));
   } catch (error) {
     console.error('Error getting all votes:', error);
@@ -123,10 +118,11 @@ export const getVotesByPage = async (pageSize: number, lastTimestamp?: number): 
 
     const querySnapshot = await getDocs(q);
     const votes = querySnapshot.docs.slice(0, pageSize).map(doc => ({
-      id: doc.data().id,
+      id: doc.id,
       vote: doc.data().vote,
       weight: doc.data().weight,
-      timestamp: doc.data().timestamp
+      timestamp: doc.data().timestamp,
+      apartment: doc.data().apartment
     }));
 
     const hasMore = querySnapshot.docs.length > pageSize;
@@ -283,13 +279,14 @@ export const subscribeToVotingState = (callback: (state: VotingState) => void) =
     (snapshot) => {
       const state = snapshot.data() as VotingState || {
         isActive: false,
-        question: null
+        question: null,
+        showResults: false
       };
       callback(state);
     },
     (error) => {
       console.error('Error subscribing to voting state:', error);
-      callback({ isActive: false, question: null });
+      callback({ isActive: false, question: null, showResults: false });
     }
   );
 };

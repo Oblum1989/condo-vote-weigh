@@ -21,45 +21,14 @@ import {
 } from "@/services/firebaseService";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-
-export interface VoteData {
-  id: string;
-  apartment: string;
-  vote: string;  // Ahora acepta cualquier string para las opciones de voto
-  weight: number;
-  timestamp?: number;
-}
-
-export interface VoterWeights {
-  [key: string]: number;
-}
-
-export interface Voter {
-  cedula: string;
-  apartment: string;
-}
-
-export interface Voters {
-  [apartment: string]: Voter;
-}
-
-export interface VotingQuestion {
-  id: string;
-  title: string;
-  description: string;
-  options: string[];
-  isActive: boolean;
-  startTime?: number;
-  endTime?: number;
-}
-
-export interface VotingState {
-  isActive: boolean;
-  question: VotingQuestion | null;
-  startTime?: number;
-  endTime?: number;
-  showResults: boolean;
-}
+import {
+  VoteData,
+  VoterWeights,
+  Voter,
+  Voters,
+  VotingState,
+  AttendanceData
+} from "@/types";
 
 const Index = () => {
   const [loading, setLoading] = useState(true);

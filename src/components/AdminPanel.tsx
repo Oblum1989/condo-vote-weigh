@@ -23,7 +23,7 @@ import {
   Upload,
   BarChart3
 } from "lucide-react";
-import { VotingState, VotingQuestion, VoterWeights, VoteData } from "@/pages/Index";
+import { VotingState, VotingQuestion, VoterWeights, VoteData, AdminPanelProps } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import {
   getQuestions,
