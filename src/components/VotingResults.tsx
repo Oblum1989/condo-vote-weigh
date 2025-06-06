@@ -81,25 +81,44 @@ const VotingResults = ({ isAdmin = false }: VotingResultsProps) => {
     );
   }
 
-  if (!isAdmin && !votingState.showResults) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="text-center">
-            <Lock className="mx-auto text-gray-400 mb-4" size={48} />
-            <h3 className="text-lg font-semibold mb-2">Resultados no disponibles</h3>
-            <p className="text-gray-600">
-              Los resultados serán visibles cuando el administrador lo habilite.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Calcular resultados
   const totalVotes = votes.length;
   const totalWeight = votes.reduce((sum, vote) => sum + vote.weight, 0);
+
+  if (!isAdmin && !votingState.showResults) {
+    return (
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle>Resumen de la Votación</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">{totalVotes}</div>
+                <div className="text-sm text-gray-600">Votos Totales</div>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">{totalWeight.toFixed(1)}</div>
+                <div className="text-sm text-gray-600">Peso Total</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Lock className="mx-auto text-gray-400 mb-4" size={48} />
+              <h3 className="text-lg font-semibold mb-2">Resultados no disponibles</h3>
+              <p className="text-gray-600">
+                Los resultados serán visibles cuando el administrador lo habilite.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </>
+    );
+  }
 
   const results = votes.reduce((acc, vote) => {
     acc[vote.vote] = {
@@ -130,76 +149,68 @@ const VotingResults = ({ isAdmin = false }: VotingResultsProps) => {
         </Card>
       )}
 
-      {/* Results */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Resultados de la Votación</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Summary */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{totalVotes}</div>
-              <div className="text-sm text-gray-600">Votos Totales</div>
-            </div>
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{totalWeight.toFixed(1)}</div>
-              <div className="text-sm text-gray-600">Peso Total</div>
-            </div>
-          </div>
+      {/* Summary - Always visible */}
 
-          {/* Detailed Results */}
-          <div className="space-y-4">
-            {Object.entries(results).map(([option, data]) => (
-              <div key={option} className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <span className="font-semibold">
-                      {option.charAt(0).toUpperCase() + option.slice(1)}
-                    </span>
-                    <span className="text-sm text-gray-600 ml-2">
-                      ({data.count} votos, peso {data.weight.toFixed(1)})
+      {/* Detailed Results - Only visible when allowed */}
+      {(isAdmin || votingState.showResults) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resultados Detallados</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Detailed Results */}
+            <div className="space-y-4">
+              {Object.entries(results).map(([option, data]) => (
+                <div key={option} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-semibold">
+                        {option.charAt(0).toUpperCase() + option.slice(1)}
+                      </span>
+                      <span className="text-sm text-gray-600 ml-2">
+                        ({data.count} votos, peso {data.weight.toFixed(1)})
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold">
+                      {calculatePercentage(data.weight).toFixed(1)}%
                     </span>
                   </div>
-                  <span className="text-sm font-semibold">
-                    {calculatePercentage(data.weight).toFixed(1)}%
-                  </span>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className="bg-blue-600 h-2.5 rounded-full"
+                      style={{
+                        width: `${calculatePercentage(data.weight)}%`
+                      }}
+                    ></div>
+                  </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div
-                    className="bg-blue-600 h-2.5 rounded-full"
-                    style={{
-                      width: `${calculatePercentage(data.weight)}%`
-                    }}
-                  ></div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Admin Actions */}
-          {isAdmin && (
-            <div className="grid grid-cols-2 gap-4 pt-4">
-              <Button
-                variant="destructive"
-                className="w-full flex items-center justify-center gap-2 h-12"
-                onClick={handleReset}
-              >
-                <RotateCcw size={20} />
-                Resetear Votos
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full flex items-center justify-center gap-2 h-12"
-                onClick={handleExport}
-              >
-                <Download size={20} />
-                Exportar Resultados
-              </Button>
+              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {/* Admin Actions */}
+            {isAdmin && (
+              <div className="grid grid-cols-2 gap-4 pt-4">
+                <Button
+                  variant="destructive"
+                  className="w-full flex items-center justify-center gap-2 h-12"
+                  onClick={handleReset}
+                >
+                  <RotateCcw size={20} />
+                  Resetear Votos
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2 h-12"
+                  onClick={handleExport}
+                >
+                  <Download size={20} />
+                  Exportar Resultados
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
