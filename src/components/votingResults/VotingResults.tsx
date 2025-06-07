@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Lock } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 import { useVotingStore } from "@/store/useVotingStore";
 import CurrentQuestion from "./CurrentQuestion";
 import VotingSummary from "./VotingSummary";
@@ -17,11 +17,14 @@ const VotingResults = ({ isAdmin = false }: VotingResultsProps) => {
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex justify-center items-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            <span className="ml-3">Cargando resultados...</span>
+      <Card className="border-2 shadow-md">
+        <CardContent className="p-8">
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900">Cargando resultados</h3>
+              <p className="text-sm text-gray-500">Por favor espere un momento...</p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -34,20 +37,22 @@ const VotingResults = ({ isAdmin = false }: VotingResultsProps) => {
 
   if (!isAdmin && !votingState.showResults) {
     return (
-      <>
+      <div className="space-y-6">
         <VotingSummary totalVotes={totalVotes} totalWeight={totalWeight} />
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <Lock className="mx-auto text-gray-400 mb-4" size={48} />
-              <h3 className="text-lg font-semibold mb-2">Resultados no disponibles</h3>
-              <p className="text-gray-600">
+        <Card className="border-2 shadow-md overflow-hidden">
+          <CardContent className="pt-8 pb-10">
+            <div className="text-center space-y-4">
+              <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Lock className="text-gray-400" size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Resultados no disponibles</h3>
+              <p className="text-gray-600 max-w-md mx-auto">
                 Los resultados serán visibles cuando el administrador lo habilite.
               </p>
             </div>
           </CardContent>
         </Card>
-      </>
+      </div>
     );
   }
 
@@ -59,14 +64,10 @@ const VotingResults = ({ isAdmin = false }: VotingResultsProps) => {
     return acc;
   }, {} as Record<string, { count: number; weight: number }>);
 
-  // Calcular porcentajes
-
   return (
     <div className="space-y-6">
       <CurrentQuestion question={votingState.question} />
       <VotingSummary totalVotes={totalVotes} totalWeight={totalWeight} />
-
-      {/* Detailed Results - Only visible when allowed */}
       {(isAdmin || votingState.showResults) && (
         <DetailedResults
           results={results}

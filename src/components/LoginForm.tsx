@@ -50,57 +50,58 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
   };
 
   return (
-    <Card className="max-w-md mx-auto">
-      <CardHeader className="text-center">
-        <CardTitle className="flex items-center justify-center gap-2">
+    <Card className="max-w-md mx-auto shadow-lg border-2">
+      <CardHeader className="text-center space-y-2 pb-6">
+        <CardTitle className="flex items-center justify-center gap-3 text-2xl font-bold">
           {getIcon()}
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
-
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-semibold mb-2">Credenciales de Acceso:</h3>
-          <p className="text-sm text-gray-600">
+        <div className="mb-8 p-5 bg-blue-50 rounded-lg border border-blue-100 shadow-sm">
+          <h3 className="font-bold text-lg text-blue-900 mb-3">Credenciales de Acceso:</h3>
+          <p className="text-sm text-gray-700 leading-relaxed">
             <strong>Usuario:</strong> admin_votacion<br />
             <strong>Contraseña:</strong> admin123
           </p>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-gray-600 mt-3 italic">
             Nota: En un ambiente de producción, estas credenciales serían diferentes y seguras.
           </p>
         </div>
 
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Usuario</Label>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-3">
+            <Label htmlFor="username" className="text-sm font-semibold text-gray-700">
+              Usuario
+            </Label>
             <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <User className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
               <Input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Ingrese su nombre de usuario"
-
-                className="pl-10"
+                className="pl-10 h-12 border-2 focus:border-blue-400"
                 disabled={isLoading}
                 required
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
+          <div className="space-y-3">
+            <Label htmlFor="password" className="text-sm font-semibold text-gray-700">
+              Contraseña
+            </Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Ingrese su contraseña"
-                className="pl-10"
+                className="pl-10 h-12 border-2 focus:border-blue-400"
                 disabled={isLoading}
                 required
               />
@@ -109,8 +110,8 @@ const LoginForm = ({ role, title, onSuccess }: LoginFormProps) => {
 
           <Button
             type="submit"
-            className="w-full"
-
+            className="w-full h-12 text-lg font-semibold shadow-md transition-all 
+                     hover:scale-[1.02] active:scale-[0.98]"
             disabled={isLoading}
           >
             {isLoading ? "Autenticando..." : "Iniciar Sesión"}

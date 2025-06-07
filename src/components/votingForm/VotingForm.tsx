@@ -150,15 +150,15 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
   }
 
   return (
-    <Card>
+    <Card className="shadow-lg border-2">
       <CardContent className="pt-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="space-y-6">
             {/* Question Display */}
-            <div className="bg-blue-50 p-4 rounded-lg space-y-2">
-              <h2 className="text-xl font-semibold">{votingState.question.title}</h2>
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg space-y-3 shadow-sm border border-blue-200">
+              <h2 className="text-2xl font-bold text-blue-900">{votingState.question.title}</h2>
               {votingState.question.description && (
-                <p className="text-gray-600">{votingState.question.description}</p>
+                <p className="text-gray-700 text-lg leading-relaxed">{votingState.question.description}</p>
               )}
             </div>
 
@@ -176,7 +176,7 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
                 onValidate={handleValidate}
               />
             ) : (
-              <>
+              <div className="space-y-6">
                 <VotingOptions
                   options={votingState.question.options}
                   selectedVote={selectedVote}
@@ -186,20 +186,23 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
 
                 <Button
                   type="submit"
-                  className="w-full h-12 text-lg"
+                  className="w-full h-14 text-lg font-semibold shadow-md hover:shadow-lg 
+                           transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                   disabled={!selectedVote || isSubmitting}
                 >
                   {isSubmitting ? "Registrando voto..." : "CONFIRMAR VOTO"}
                 </Button>
 
-                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <AlertCircle className="text-amber-600 mt-0.5" size={20} />
-                  <div className="text-sm text-amber-800">
-                    <strong>Importante:</strong> Una vez confirmado el voto, no se puede modificar.
+                <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-amber-50 to-amber-100 
+                              border-2 border-amber-200 rounded-lg shadow-sm">
+                  <AlertCircle className="text-amber-600 mt-0.5 flex-shrink-0" size={24} />
+                  <div className="text-sm text-amber-800 leading-relaxed">
+                    <strong className="block text-base mb-1">Importante:</strong>
+                    Una vez confirmado el voto, no se puede modificar.
                     Verifique su selección antes de continuar.
                   </div>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </form>
