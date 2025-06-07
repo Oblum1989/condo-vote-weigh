@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from "react";
-import VotingForm from "@/components/VotingForm";
-import VotingResults from "@/components/VotingResults";
+import VotingForm from "@/components/votingForm/VotingForm";
+import VotingResults from "@/components/votingResults/VotingResults";
 import AdminPanel from "@/components/adminPanel/AdminPanel";
 import LoginForm from "@/components/LoginForm";
 import AttendancePanel from "@/components/attendancePanel/AttendancePanel";

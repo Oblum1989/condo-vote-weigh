@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { checkIfVoted, validateVoter, checkAttendance } from "@/services/firebaseService";
 import { useVotingStore } from "@/store/useVotingStore";
+import ValidationSection from "./ValidationSection";
+import VotingOptions from "./VotingOptions";
+import NoActiveVoting from "./NoActiveVoting";
 
 interface VotingFormProps {
   isAdmin?: boolean;
@@ -145,19 +146,7 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
   };
 
   if (!votingState.isActive || !votingState.question) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="text-center">
-            <AlertCircle className="mx-auto text-yellow-500 mb-4" size={48} />
-            <h3 className="text-lg font-semibold mb-2">Votación no disponible</h3>
-            <p className="text-gray-600">
-              No hay ninguna votación activa en este momento.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <NoActiveVoting />;
   }
 
   return (
@@ -173,111 +162,46 @@ const VotingForm = ({ isAdmin = false }: VotingFormProps) => {
               )}
             </div>
 
-            {/* Validation Section */}
-            <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-              <div className="space-y-2">
-                <Label htmlFor="voterId">Número de Cédula</Label>
-                <Input
-                  id="voterId"
-                  type="text"
-                  value={voterId}
-                  onChange={(e) => setVoterId(e.target.value)}
-                  placeholder="Ingrese su número de cédula"
-                  disabled={isValidating || isSubmitting || isValidated}
-                  required
+            {!isValidated ? (
+              <ValidationSection
+                voterId={voterId}
+                apartment={apartment}
+                isValidating={isValidating}
+                isSubmitting={isSubmitting}
+                isValidated={isValidated}
+                validationError={validationError}
+                voteWeight={voteWeight}
+                onVoterIdChange={setVoterId}
+                onApartmentChange={setApartment}
+                onValidate={handleValidate}
+              />
+            ) : (
+              <>
+                <VotingOptions
+                  options={votingState.question.options}
+                  selectedVote={selectedVote}
+                  isSubmitting={isSubmitting}
+                  onVoteSelect={(vote) => setSelectedVote(vote as 'si' | 'no' | 'blanco')}
                 />
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="apartment">Número de Apartamento</Label>
-                <Input
-                  id="apartment"
-                  type="text"
-                  value={apartment}
-                  onChange={(e) => setApartment(e.target.value)}
-                  placeholder="Ingrese su número de apartamento"
-                  disabled={isValidating || isSubmitting || isValidated}
-                  required
-                />
-              </div>
+                <Button
+                  type="submit"
+                  className="w-full h-12 text-lg"
+                  disabled={!selectedVote || isSubmitting}
+                >
+                  {isSubmitting ? "Registrando voto..." : "CONFIRMAR VOTO"}
+                </Button>
 
-              <Button
-                type="button"
-                onClick={handleValidate}
-                disabled={isValidating || isSubmitting || isValidated}
-                className="w-full"
-              >
-                {isValidating ? "Validando..." : "Validar Datos"}
-              </Button>
-            </div>
-
-            {/* Validation Status */}
-            {validationError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center gap-2 text-red-700">
-                  <XCircle size={20} />
-                  <span className="font-medium">Error de validación</span>
+                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <AlertCircle className="text-amber-600 mt-0.5" size={20} />
+                  <div className="text-sm text-amber-800">
+                    <strong>Importante:</strong> Una vez confirmado el voto, no se puede modificar.
+                    Verifique su selección antes de continuar.
+                  </div>
                 </div>
-                <p className="mt-1 text-sm text-red-600">
-                  {validationError}
-                </p>
-              </div>
-            )}
-
-            {isValidated && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle size={20} />
-                  <span className="font-medium">Datos validados correctamente</span>
-                </div>
-                <p className="mt-1 text-sm text-green-600">
-                  Peso del voto: {voteWeight}
-                </p>
-              </div>
-            )}
-
-            {/* Voting Options - Solo visible después de validar */}
-            {isValidated && (
-              <div className="space-y-2">
-                <Label>Su Voto</Label>
-                <div className={`grid grid-cols-${votingState.question.options.length} gap-4`}>
-                  {votingState.question.options.map((option, index) => (
-                    <Button
-                      key={index}
-                      type="button"
-                      variant={selectedVote === option.toLowerCase() ? 'default' : 'outline'}
-                      onClick={() => setSelectedVote(option.toLowerCase() as 'si' | 'no' | 'blanco')}
-                      className="h-16"
-                      disabled={isSubmitting}
-                    >
-                      {option.toUpperCase()}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+              </>
             )}
           </div>
-
-          {/* Submit Button - Solo visible después de validar */}
-          {isValidated && (
-            <>
-              <Button
-                type="submit"
-                className="w-full h-12 text-lg"
-                disabled={!selectedVote || isSubmitting}
-              >
-                {isSubmitting ? "Registrando voto..." : "CONFIRMAR VOTO"}
-              </Button>
-
-              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertCircle className="text-amber-600 mt-0.5" size={20} />
-                <div className="text-sm text-amber-800">
-                  <strong>Importante:</strong> Una vez confirmado el voto, no se puede modificar.
-                  Verifique su selección antes de continuar.
-                </div>
-              </div>
-            </>
-          )}
         </form>
       </CardContent>
     </Card>
